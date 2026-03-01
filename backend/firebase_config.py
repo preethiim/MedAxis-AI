@@ -27,7 +27,7 @@ def initialize_firebase():
                 return
             
             # Allow bucket customization via environment, default to MedAxis
-            bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "medaxis-ai.appspot.com")
+            bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "medaxis-ai.firebasestorage.app")
             project_id = os.environ.get("VITE_FIREBASE_PROJECT_ID", "medaxis-ai")
             
             # Explicitly pass project_id to fix "A project ID is required" local errors
