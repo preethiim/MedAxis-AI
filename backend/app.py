@@ -14,16 +14,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for the frontend Vite application running on localhost:5173
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-
+# Enable CORS for the frontend
+# In production with wildcard allowed origins, allow_credentials usually needs to be False
+# or specifically designated. For ease of deployment, we'll allow all origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

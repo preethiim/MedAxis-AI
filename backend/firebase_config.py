@@ -2,19 +2,29 @@ import os
 import firebase_admin
 from firebase_admin import credentials
 
+import json
+
 def initialize_firebase():
     """
-    Initializes the Firebase Admin SDK using the credentials
-    specified by the environment variable GOOGLE_APPLICATION_CREDENTIALS.
+    Initializes the Firebase Admin SDK.
+    Checks for `FIREBASE_CREDENTIALS_JSON` (used in production on Render).
+    Falls back to `GOOGLE_APPLICATION_CREDENTIALS` (used locally).
     """
     if not firebase_admin._apps:
-        # Check if GOOGLE_APPLICATION_CREDENTIALS is set
-        if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-            print("WARNING: GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.")
-            print("Be sure to set it to the path of your Firebase service account JSON key file.")
-            
         try:
-            cred = credentials.ApplicationDefault()
+            cred = None
+            if os.environ.get("FIREBASE_CREDENTIALS_JSON"):
+                # Production: Parse the JSON string from the environment variable
+                cert_dict = json.loads(os.environ.get("FIREBASE_CREDENTIALS_JSON"))
+                cred = credentials.Certificate(cert_dict)
+                print("Using FIREBASE_CREDENTIALS_JSON for Firebase Auth")
+            elif os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+                # Local Development: Read from path
+                cred = credentials.ApplicationDefault()
+                print("Using GOOGLE_APPLICATION_CREDENTIALS for Firebase Auth")
+            else:
+                print("WARNING: Neither FIREBASE_CREDENTIALS_JSON nor GOOGLE_APPLICATION_CREDENTIALS are set.")
+                return
             
             # Allow bucket customization via environment, default to MedAxis
             bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "medaxis-ai-4faec.firebasestorage.app")
