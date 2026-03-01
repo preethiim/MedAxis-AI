@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Award, Footprints } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const FASTAPI_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -27,6 +27,12 @@ const PatientDashboard = () => {
     const [bmiData, setBmiData] = useState([]);
     const [fetchingTrends, setFetchingTrends] = useState(false);
 
+    // Steps & Rewards State
+    const [stepInput, setStepInput] = useState('');
+    const [stepRewards, setStepRewards] = useState({ daily_steps: {}, total_points: 0 });
+    const [stepLoading, setStepLoading] = useState(false);
+    const [stepMsg, setStepMsg] = useState(null);
+
     useEffect(() => {
         const fetchDashboardData = async () => {
             if (!currentUser) return;
@@ -37,9 +43,10 @@ const PatientDashboard = () => {
                 const headers = { 'Authorization': `Bearer ${token}` };
 
                 // Fetch reports and vitals in parallel
-                const [reportsRes, vitalsRes] = await Promise.all([
+                const [reportsRes, vitalsRes, stepsRes] = await Promise.all([
                     fetch(`${FASTAPI_URL}/patient/reports`, { headers }),
-                    fetch(`${FASTAPI_URL}/patient/vitals`, { headers })
+                    fetch(`${FASTAPI_URL}/patient/vitals`, { headers }),
+                    fetch(`${FASTAPI_URL}/patient/step-rewards`, { headers })
                 ]);
 
                 const reportsData = await reportsRes.json();
@@ -62,6 +69,10 @@ const PatientDashboard = () => {
                     const cleanBmiHistory = bmiHistory.filter((v, i, a) => a.findIndex(t => (t.timestamp === v.timestamp)) === i);
                     setBmiData(cleanBmiHistory);
                 }
+
+                const stepsData = await stepsRes.json();
+                if (stepsRes.ok) setStepRewards(stepsData);
+
 
             } catch (err) {
                 console.error("Error fetching patient records:", err);
@@ -186,7 +197,7 @@ const PatientDashboard = () => {
                 {/* Left Column - Forms & Tabs */}
                 <div className="glass-panel" style={{ padding: '1.5rem', alignSelf: 'start' }}>
                     <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
-                        {['my reports', 'trends', 'profile', 'vitals', 'labs', 'pdf'].map(tab => (
+                        {['my reports', 'trends', 'upload pdf', 'steps', 'profile', 'vitals', 'labs'].map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -198,7 +209,7 @@ const PatientDashboard = () => {
                                     whiteSpace: 'nowrap'
                                 }}
                             >
-                                {tab === 'pdf' ? 'Upload PDF' : tab}
+                                {tab === 'upload pdf' ? '📄 Upload PDF' : tab === 'steps' ? '🏃 Steps' : tab}
                             </button>
                         ))}
                     </div>
@@ -225,7 +236,6 @@ const PatientDashboard = () => {
                                 </select>
                             </div>
                             <div className="form-group"><input className="form-input" type="date" value={profile.birthDate} onChange={e => setProfile({ ...profile, birthDate: e.target.value })} required /></div>
-                            <div className="form-group"><input className="form-input" placeholder="Health ID (e.g. AB1234)" value={profile.healthId} onChange={e => setProfile({ ...profile, healthId: e.target.value })} required /></div>
                             <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save Profile'}</button>
                             {results.profile && <div style={{ marginTop: '1rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}><CheckCircle size={16} /> Saved Successfully</div>}
                         </form>
@@ -256,7 +266,7 @@ const PatientDashboard = () => {
                         </form>
                     )}
 
-                    {activeTab === 'pdf' && (
+                    {activeTab === 'upload pdf' && (
                         <form onSubmit={uploadPdf}>
                             <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <FileText size={18} /> Upload PDF Report
@@ -279,6 +289,63 @@ const PatientDashboard = () => {
                             </button>
                             {results.pdfAnalysis && <div style={{ marginTop: '1rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}><CheckCircle size={16} /> Analyzed Successfully</div>}
                         </form>
+                    )}
+
+                    {activeTab === 'steps' && (
+                        <div>
+                            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                🏃 Steps & Rewards
+                            </h3>
+                            <div style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(139,92,246,0.15))', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem', textAlign: 'center', border: '1px solid rgba(245,158,11,0.2)' }}>
+                                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Total Reward Points</div>
+                                <div style={{ fontSize: '2.5rem', fontWeight: 700, color: '#f59e0b' }}>{stepRewards.total_points || 0}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                                <input type="number" className="form-input" placeholder="Enter today's steps" value={stepInput} onChange={e => setStepInput(e.target.value)} style={{ margin: 0, flex: 1 }} />
+                                <button className="btn-primary" style={{ margin: 0, width: 'auto' }} disabled={stepLoading || !stepInput}
+                                    onClick={async () => {
+                                        setStepLoading(true); setStepMsg(null);
+                                        try {
+                                            const token = await currentUser.getIdToken();
+                                            const res = await fetch(`${FASTAPI_URL}/patient/log-steps`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                body: JSON.stringify({ steps: parseInt(stepInput) })
+                                            });
+                                            const data = await res.json();
+                                            if (!res.ok) throw new Error(data.detail);
+                                            setStepMsg({ type: 'success', text: `+${data.points_earned} pts! Total: ${data.total_points}` });
+                                            setStepRewards(prev => ({ ...prev, total_points: data.total_points, daily_steps: { ...prev.daily_steps, [new Date().toISOString().split('T')[0]]: parseInt(stepInput) } }));
+                                            setStepInput('');
+                                        } catch (err) { setStepMsg({ type: 'error', text: err.message }); }
+                                        finally { setStepLoading(false); }
+                                    }}
+                                >{stepLoading ? '...' : 'Log Steps'}</button>
+                            </div>
+                            {stepMsg && <div style={{ color: stepMsg.type === 'success' ? '#10b981' : '#ef4444', fontSize: '0.85rem', marginBottom: '1rem' }}>{stepMsg.text}</div>}
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                                <strong>Reward Tiers:</strong>
+                                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                    <span>🥉 5,000+ steps = <span style={{ color: '#f59e0b' }}>10 pts</span></span>
+                                    <span>🥈 10,000+ steps = <span style={{ color: '#f59e0b' }}>25 pts</span></span>
+                                    <span>🥇 15,000+ steps = <span style={{ color: '#f59e0b' }}>50 pts</span></span>
+                                </div>
+                            </div>
+                            {stepRewards.daily_steps && Object.keys(stepRewards.daily_steps).length > 0 && (
+                                <div style={{ marginTop: '1rem' }}>
+                                    <h4 style={{ fontSize: '0.95rem', marginBottom: '0.75rem', color: 'var(--text-main)' }}>Recent Step History</h4>
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <BarChart data={Object.entries(stepRewards.daily_steps).sort((a, b) => a[0].localeCompare(b[0])).slice(-7).map(([date, steps]) => ({ date: date.substring(5), steps }))}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                                            <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} />
+                                            <YAxis stroke="var(--text-muted)" fontSize={12} />
+                                            <Tooltip contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px' }} />
+                                            <Bar dataKey="steps" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 

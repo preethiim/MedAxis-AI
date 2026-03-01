@@ -963,3 +963,214 @@ def revoke_patient_consent(req: PatientConsentRequest, uid: str = Depends(get_cu
     except Exception as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=f"Failed to revoke consent: {str(e)}")
+
+# ─── Super Admin Auth Helper ───────────────────────────────────────────────
+
+def get_current_superadmin_uid(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        from firebase_admin import auth
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        role = decoded_token.get("role", "")
+        if role != "superadmin":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail="Unauthorized: Super Admin access required.")
+        return decoded_token.get("uid")
+    except Exception as e:
+        from fastapi import HTTPException
+        if hasattr(e, 'status_code'):
+            raise e
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+
+# ─── Super Admin Endpoints ─────────────────────────────────────────────────
+
+@app.get("/superadmin/all-users")
+def get_all_users(uid: str = Depends(get_current_superadmin_uid)):
+    """Returns all users grouped by role."""
+    try:
+        db = firestore.client()
+        users = db.collection("users").stream()
+        result = {"patients": [], "doctors": [], "hospitals": [], "superadmins": []}
+        for u in users:
+            data = u.to_dict()
+            data["id"] = u.id
+            role = data.get("role", "patient")
+            if role == "patient":
+                result["patients"].append(data)
+            elif role == "doctor":
+                result["doctors"].append(data)
+            elif role == "hospital":
+                result["hospitals"].append(data)
+            elif role == "superadmin":
+                result["superadmins"].append(data)
+        return result
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/superadmin/platform-stats")
+def get_platform_stats(uid: str = Depends(get_current_superadmin_uid)):
+    """Returns platform-wide statistics."""
+    try:
+        db = firestore.client()
+        users = list(db.collection("users").stream())
+        patients = [u for u in users if u.to_dict().get("role") == "patient"]
+        doctors = [u for u in users if u.to_dict().get("role") == "doctor"]
+        hospitals = [u for u in users if u.to_dict().get("role") == "hospital"]
+
+        # Count all reports
+        total_reports = 0
+        high_risk_reports = 0
+        for p in patients:
+            reports = list(db.collection("patients").document(p.id).collection("diagnostic_reports").stream())
+            total_reports += len(reports)
+
+        # Count unresolved alerts
+        alerts = list(db.collection("alerts").where("status", "==", "unresolved").stream())
+
+        return {
+            "total_patients": len(patients),
+            "total_doctors": len(doctors),
+            "total_hospitals": len(hospitals),
+            "total_reports": total_reports,
+            "unresolved_alerts": len(alerts),
+            "total_users": len(users)
+        }
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/superadmin/all-reports")
+def get_all_reports(uid: str = Depends(get_current_superadmin_uid)):
+    """Returns all diagnostic reports across all patients."""
+    try:
+        db = firestore.client()
+        patients = list(db.collection("users").where("role", "==", "patient").stream())
+        all_reports = []
+        for p in patients:
+            p_data = p.to_dict()
+            reports = db.collection("patients").document(p.id).collection("diagnostic_reports").stream()
+            for r in reports:
+                report_data = r.to_dict()
+                report_data["id"] = r.id
+                report_data["patient_uid"] = p.id
+                report_data["patient_name"] = p_data.get("name", "Unknown")
+                report_data["patient_email"] = p_data.get("email", "")
+                all_reports.append(report_data)
+        return {"reports": all_reports}
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Patient Lookup (Centralized Cross-Hospital) ──────────────────────────
+
+@app.get("/patient/lookup")
+def lookup_patient_by_health_id(health_id: str):
+    """
+    Allows any authenticated user to search for a patient by their Health ID.
+    Returns basic patient info for cross-hospital record access.
+    """
+    from fastapi import HTTPException
+    try:
+        db = firestore.client()
+        users = db.collection("users").where("role", "==", "patient").stream()
+        for u in users:
+            data = u.to_dict()
+            if data.get("healthId", "") == health_id:
+                # Return basic info + their reports
+                reports = list(db.collection("patients").document(u.id).collection("diagnostic_reports").stream())
+                report_list = []
+                for r in reports:
+                    rd = r.to_dict()
+                    rd["id"] = r.id
+                    report_list.append(rd)
+
+                return {
+                    "found": True,
+                    "patient": {
+                        "uid": u.id,
+                        "name": data.get("name", "Unknown"),
+                        "email": data.get("email", ""),
+                        "healthId": data.get("healthId", ""),
+                        "height": data.get("height", ""),
+                        "weight": data.get("weight", ""),
+                        "bmi": data.get("bmi", ""),
+                    },
+                    "reports": report_list
+                }
+        raise HTTPException(status_code=404, detail=f"No patient found with Health ID: {health_id}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Step Count & Reward System ────────────────────────────────────────────
+
+class StepLogRequest(BaseModel):
+    steps: int
+
+REWARD_TIERS = [
+    (15000, 50),
+    (10000, 25),
+    (5000, 10),
+]
+
+@app.post("/patient/log-steps")
+def log_steps(req: StepLogRequest, uid: str = Depends(get_current_patient_uid)):
+    """Log daily steps and calculate reward points."""
+    from fastapi import HTTPException
+    from datetime import datetime
+    try:
+        db = firestore.client()
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+
+        ref = db.collection("step_rewards").document(uid)
+        doc = ref.get()
+
+        if doc.exists:
+            data = doc.to_dict()
+        else:
+            data = {"daily_steps": {}, "total_points": 0, "rewards_claimed": []}
+
+        # Calculate points for this entry
+        points_earned = 0
+        for threshold, pts in REWARD_TIERS:
+            if req.steps >= threshold:
+                points_earned = pts
+                break
+
+        data["daily_steps"][today] = req.steps
+        data["total_points"] = data.get("total_points", 0) + points_earned
+
+        ref.set(data)
+
+        return {
+            "message": f"Logged {req.steps} steps for {today}",
+            "points_earned": points_earned,
+            "total_points": data["total_points"],
+            "steps_today": req.steps
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/patient/step-rewards")
+def get_step_rewards(uid: str = Depends(get_current_patient_uid)):
+    """Get step history and reward points."""
+    from fastapi import HTTPException
+    try:
+        db = firestore.client()
+        ref = db.collection("step_rewards").document(uid)
+        doc = ref.get()
+
+        if not doc.exists:
+            return {"daily_steps": {}, "total_points": 0, "rewards_claimed": []}
+
+        return doc.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

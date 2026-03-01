@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle } from 'lucide-react';
+import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle, Search } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -41,6 +41,11 @@ export const DoctorDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [commentData, setCommentData] = useState({});
+
+    // Patient Lookup State
+    const [searchId, setSearchId] = useState('');
+    const [searchResult, setSearchResult] = useState(null);
+    const [searchError, setSearchError] = useState('');
 
     useEffect(() => {
         const fetchReports = async () => {
@@ -111,6 +116,45 @@ export const DoctorDashboard = () => {
                     </button>
                 </div>
             </header>
+
+            {/* Patient Lookup */}
+            <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '2rem' }}>
+                <h4 style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={18} /> Search Patient by Health ID</h4>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input type="text" className="form-input" placeholder="e.g. PAT-A1B2C3" value={searchId} onChange={e => setSearchId(e.target.value)} style={{ margin: 0, flex: 1 }} />
+                    <button className="btn-primary" style={{ margin: 0, width: 'auto' }} onClick={async () => {
+                        setSearchError(''); setSearchResult(null);
+                        try {
+                            const res = await fetch(`${API_BASE_URL}/patient/lookup?health_id=${searchId.trim()}`);
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.detail || 'Not found');
+                            setSearchResult(data);
+                        } catch (err) { setSearchError(err.message); }
+                    }}>Search</button>
+                </div>
+                {searchError && <div style={{ color: '#ef4444', marginTop: '0.5rem', fontSize: '0.85rem' }}>{searchError}</div>}
+                {searchResult && (
+                    <div style={{ marginTop: '1rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                        <h4 style={{ color: '#34d399', marginBottom: '0.5rem' }}>✓ Patient Found</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem', fontSize: '0.9rem' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>Name:</span><span>{searchResult.patient.name}</span>
+                            <span style={{ color: 'var(--text-muted)' }}>Health ID:</span><span style={{ fontFamily: 'monospace', color: '#60a5fa' }}>{searchResult.patient.healthId}</span>
+                            <span style={{ color: 'var(--text-muted)' }}>Email:</span><span>{searchResult.patient.email}</span>
+                        </div>
+                        {searchResult.reports.length > 0 && (
+                            <div style={{ marginTop: '0.75rem' }}>
+                                <strong style={{ fontSize: '0.85rem' }}>Reports ({searchResult.reports.length}):</strong>
+                                {searchResult.reports.map((r, i) => (
+                                    <div key={i} style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.85rem' }}>
+                                        Report: {r.id}
+                                        {r.presentedForm?.[0]?.url && <a href={r.presentedForm[0].url} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', marginLeft: '0.5rem' }}>View PDF →</a>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
 
             {error && <div style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</div>}
             {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading patient reports...</p> : (

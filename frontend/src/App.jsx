@@ -4,6 +4,7 @@ import Register from './pages/Register';
 import ProtectedRoute from './components/ProtectedRoute';
 import PatientDashboard from './pages/PatientDashboard';
 import { DoctorDashboard, HospitalDashboard } from './pages/Dashboards';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import ThemeToggle from './components/ThemeToggle';
 
 function App() {
@@ -30,6 +31,12 @@ function App() {
         <Route path="/dashboard/hospital" element={
           <ProtectedRoute allowedRoles={['hospital']}>
             <HospitalDashboard />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/dashboard/superadmin" element={
+          <ProtectedRoute allowedRoles={['superadmin']}>
+            <SuperAdminDashboard />
           </ProtectedRoute>
         } />
 
