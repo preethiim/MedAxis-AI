@@ -1078,13 +1078,21 @@ def lookup_patient_by_health_id(health_id: str):
         for u in users:
             data = u.to_dict()
             if data.get("healthId", "") == health_id:
-                # Return basic info + their reports
-                reports = list(db.collection("patients").document(u.id).collection("diagnostic_reports").stream())
+                # Return basic info + their reports + prescriptions
+                reports = list(db.collection("fhir_reports").document(u.id).collection("reports").stream())
+                # Fallback to older diagnostic_reports collection if fhir_reports is empty (for backward compatibility if needed)
+                if not reports:
+                    reports = list(db.collection("patients").document(u.id).collection("diagnostic_reports").stream())
+                
                 report_list = []
                 for r in reports:
                     rd = r.to_dict()
-                    rd["id"] = r.id
+                    if "id" not in rd:
+                        rd["id"] = r.id
                     report_list.append(rd)
+                    
+                rx_docs = db.collection("fhir_prescriptions").document(u.id).collection("prescriptions").stream()
+                prescriptions = [rx.to_dict() for rx in rx_docs]
 
                 return {
                     "found": True,
@@ -1097,7 +1105,8 @@ def lookup_patient_by_health_id(health_id: str):
                         "weight": data.get("weight", ""),
                         "bmi": data.get("bmi", ""),
                     },
-                    "reports": report_list
+                    "reports": report_list,
+                    "prescriptions": prescriptions
                 }
         raise HTTPException(status_code=404, detail=f"No patient found with Health ID: {health_id}")
     except HTTPException:
