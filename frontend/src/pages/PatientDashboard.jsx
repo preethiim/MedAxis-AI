@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const FASTAPI_URL = "http://localhost:8000";
+const FASTAPI_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 const PatientDashboard = () => {
     const { currentUser, logout } = useAuth();

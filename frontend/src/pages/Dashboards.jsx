@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 const DashboardBase = ({ title, icon, roleName }) => {
     const { currentUser, logout } = useAuth();
 
@@ -43,7 +45,7 @@ export const DoctorDashboard = () => {
     useEffect(() => {
         const fetchReports = async () => {
             try {
-                const res = await fetch(`http://localhost:8000/doctor/reports?doctor_uid=${currentUser.uid}`);
+                const res = await fetch(`${API_BASE_URL}/doctor/reports?doctor_uid=${currentUser.uid}`);
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.detail || 'Failed to fetch reports');
                 setReports(data.reports);
@@ -65,7 +67,7 @@ export const DoctorDashboard = () => {
         if (!comment || !comment.trim()) return;
 
         try {
-            const res = await fetch(`http://localhost:8000/doctor/add-comment`, {
+            const res = await fetch(`${API_BASE_URL}/doctor/add-comment`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -218,10 +220,10 @@ export const HospitalDashboard = () => {
 
             // Fetch stats, doctors, and audit logs in parallel
             const [statsRes, doctorsRes, logsRes, patientsRes] = await Promise.all([
-                fetch('http://localhost:8000/hospital/stats', { headers }),
-                fetch('http://localhost:8000/hospital/doctors', { headers }),
-                fetch('http://localhost:8000/hospital/audit-logs', { headers }),
-                fetch('http://localhost:8000/hospital/patients', { headers })
+                fetch(`${API_BASE_URL}/hospital/stats`, { headers }),
+                fetch(`${API_BASE_URL}/hospital/doctors`, { headers }),
+                fetch(`${API_BASE_URL}/hospital/audit-logs`, { headers }),
+                fetch(`${API_BASE_URL}/hospital/patients`, { headers })
             ]);
 
             if (!statsRes.ok || !doctorsRes.ok || !logsRes.ok || !patientsRes.ok) {
@@ -257,7 +259,7 @@ export const HospitalDashboard = () => {
         setPatAssignMessage(null);
         try {
             const token = await currentUser.getIdToken();
-            const res = await fetch('http://localhost:8000/hospital/assign-patient', {
+            const res = await fetch(`${API_BASE_URL}/hospital/assign-patient`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -300,7 +302,7 @@ export const HospitalDashboard = () => {
         setAssignMessage(null);
         try {
             const token = await currentUser.getIdToken();
-            const res = await fetch('http://localhost:8000/admin/assign-role', {
+            const res = await fetch(`${API_BASE_URL}/admin/assign-role`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
