@@ -1,0 +1,41 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 1. Users can read/write only their own document
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 2. FHIR Collections - Direct access denied (Backend via Admin SDK handles access)
+    match /fhir_patients/{document=**} {
+      allow read, write: if false;
+    }
+    match /fhir_reports/{document=**} {
+      allow read, write: if false;
+    }
+    match /fhir_observations/{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Audit Logs - No client access
+    match /audit_logs/{document=**} {
+      allow read, write: if false;
+    }
+
+    // 4. Doctor Assignments - No client access
+    match /doctor_assignments/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Default deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

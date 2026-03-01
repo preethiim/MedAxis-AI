@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    match /blood_reports/{userId}/{fileName} {
+      // Patients can upload their own reports
+      // Doctors/Hospitals can read ANY report, but only patients can write to their own folder
+      allow read: if isAuthenticated() && (isOwner(userId) || request.auth.token.role == 'doctor' || request.auth.token.role == 'hospital');
+      allow write: if isAuthenticated() && isOwner(userId);
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

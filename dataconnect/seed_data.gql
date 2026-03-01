@@ -1,0 +1,104 @@
+mutation CreateDemoData @transaction @auth(level: USER, insecureReason: "This is a seed data mutation and should only be run by authenticated users for development purposes.") {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      authId: "firebase_auth_uid_1",
+      createdAt: "2023-01-01T10:00:00Z",
+      displayName: "Alice Smith",
+      email: "alice.smith@example.com",
+      dateOfBirth: "1990-05-15",
+      gender: "Female"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      authId: "firebase_auth_uid_2",
+      createdAt: "2023-01-02T11:00:00Z",
+      displayName: "Bob Johnson",
+      email: "bob.johnson@example.com",
+      dateOfBirth: "1985-11-20",
+      gender: "Male"
+    }
+  ])
+  patient_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440002",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      fhirId: "patient-123",
+      name: "Alice Smith",
+      gender: "Female",
+      birthDate: "1990-05-15",
+      address: "123 Main St, Anytown, USA",
+      telecom: "tel:555-1234"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440003",
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      fhirId: "patient-456",
+      name: "Bob Johnson",
+      gender: "Male",
+      birthDate: "1985-11-20",
+      address: "456 Oak Ave, Anytown, USA",
+      telecom: "tel:555-5678"
+    }
+  ])
+  condition_insertMany(data: [
+    {
+      patientId: "550e8400-e29b-41d4-a716-446655440002",
+      code: "250.00",
+      display: "Diabetes mellitus",
+      recordedDate: "2022-03-10",
+      onsetDateTime: "2022-03-05T08:30:00Z",
+      clinicalStatus: "active"
+    },
+    {
+      patientId: "550e8400-e29b-41d4-a716-446655440003",
+      code: "I10",
+      display: "Essential (primary) hypertension",
+      recordedDate: "2021-06-20",
+      onsetDateTime: "2021-06-15T14:00:00Z",
+      clinicalStatus: "active"
+    }
+  ])
+  medicationRequest_insertMany(data: [
+    {
+      patientId: "550e8400-e29b-41d4-a716-446655440002",
+      medicationName: "Metformin",
+      dosage: "500 mg",
+      frequency: "twice daily",
+      authoredOn: "2023-01-15T09:00:00Z",
+      status: "active",
+      reasonCode: "Diabetes"
+    },
+    {
+      patientId: "550e8400-e29b-41d4-a716-446655440003",
+      medicationName: "Lisinopril",
+      dosage: "10 mg",
+      frequency: "once daily",
+      authoredOn: "2023-02-01T10:00:00Z",
+      status: "active",
+      reasonCode: "Hypertension"
+    }
+  ])
+  observation_insertMany(data: [
+    {
+      patientId: "550e8400-e29b-41d4-a716-446655440002",
+      code: "2339-0",
+      display: "Glucose",
+      value: "120",
+      unit: "mg/dL",
+      issued: "2023-03-01T12:00:00Z",
+      status: "final",
+      referenceRange: "70-100 mg/dL"
+    },
+    {
+      patientId: "550e8400-e29b-41d4-a716-446655440003",
+      code: "8480-6",
+      display: "Systolic Blood Pressure",
+      value: "130",
+      unit: "mmHg",
+      issued: "2023-03-02T10:00:00Z",
+      status: "final",
+      referenceRange: "<120 mmHg"
+    }
+  ])
+}

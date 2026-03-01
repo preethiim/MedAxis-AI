@@ -1,0 +1,48 @@
+type User @table {
+  authId: String!
+  createdAt: Timestamp!
+  displayName: String!
+  email: String
+  dateOfBirth: Date
+  gender: String
+}
+
+type Patient @table {
+  user: User
+  fhirId: String!
+  name: String!
+  gender: String!
+  birthDate: Date!
+  address: String
+  telecom: String
+}
+
+type Condition @table {
+  patient: Patient
+  code: String!
+  display: String!
+  recordedDate: Date!
+  onsetDateTime: Timestamp
+  clinicalStatus: String
+}
+
+type MedicationRequest @table {
+  patient: Patient
+  medicationName: String!
+  dosage: String!
+  frequency: String!
+  authoredOn: Timestamp!
+  status: String
+  reasonCode: String
+}
+
+type Observation @table {
+  patient: Patient
+  code: String!
+  display: String!
+  value: String!
+  unit: String!
+  issued: Timestamp!
+  status: String
+  referenceRange: String
+}

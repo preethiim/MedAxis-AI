@@ -1,0 +1,50 @@
+# IDE and env
+.vscode/
+.idea/
+.env
+*.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+venv/
+env/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Mac
+.DS_Store
+
+# Google Cloud
+*.json
+# EXCEPT package.json of course. So we explicitly ignore generic json keys usually used for service accounts
+*serviceAccount*.json
+*key*.json
+*credentials*.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+# Note: we do NOT ignore firebase.json or .firebaserc as these are needed for deployment
+
+# Frontend Build
+frontend/dist/
+frontend/build/
