@@ -19,6 +19,7 @@ function App() {
         <Route path="/register" element={<Register />} />
 
         {/* Public Legal Routes */}
+        <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/terms-of-service" element={<TermsOfService />} />
 

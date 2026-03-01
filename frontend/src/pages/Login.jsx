@@ -222,6 +222,11 @@ const Login = () => {
                     Don't have an account? <Link to="/register" className="link">Create one</Link>
                 </p>
             </div>
+
+            {/* Public Legal Footer for Google Verification */}
+            <footer style={{ marginTop: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                By logging in, you agree to our <Link to="/privacy" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Privacy Policy</Link>
+            </footer>
         </div>
     );
 };

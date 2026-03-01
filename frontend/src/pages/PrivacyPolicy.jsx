@@ -7,33 +7,50 @@ export const PrivacyPolicy = () => {
             <p><strong>Effective Date:</strong> March 1, 2026</p>
 
             <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>1. Introduction</h2>
-            <p>Welcome to MedAxis AI ("we," "our," or "us"). We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you as to how we look after your personal data when you visit our website and tell you about your privacy rights.</p>
+            <p>Welcome to MedAxis AI. This Privacy Policy explains how we collect, use, process, and protect your personal and medical data when you use our platform. By accessing our services, you agree to the practices described in this policy.</p>
 
-            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>2. The Data We Collect</h2>
-            <p>We may collect, use, store and transfer different kinds of personal data about you which we have grouped together as follows:</p>
+            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>2. Data We Collect</h2>
+            <p>We collect the following types of information to provide and improve our healthcare services:</p>
             <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }}>
-                <li><strong>Identity Data:</strong> first name, last name, username or similar identifier, marital status, title, date of birth and gender.</li>
-                <li><strong>Contact Data:</strong> email address and telephone numbers.</li>
-                <li><strong>Health Data:</strong> medical records, blood reports, prescriptions, and device step counts (FHIR compliant).</li>
-                <li><strong>Technical Data:</strong> internet protocol (IP) address, your login data, browser type and version.</li>
+                <li><strong>Personal Information:</strong> Name, email address, date of birth, gender, and contact details.</li>
+                <li><strong>Health Data:</strong> Uploaded blood reports, clinical prescriptions, system-calculated metrics (e.g., BMI), and step counts.</li>
+                <li><strong>Technical Data:</strong> IP addresses, browser types, and application usage access logs.</li>
             </ul>
 
-            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>3. How We Use Your Data</h2>
-            <p>We will only use your personal data when the law allows us to. Most commonly, we will use your personal data in the following circumstances:</p>
+            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>3. How We Use Data</h2>
+            <p>Your data is strictly utilized for the following purposes:</p>
             <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }}>
-                <li>To provide medical analysis and insights via AI (OpenAI).</li>
-                <li>To allow authorized healthcare providers to access your records (with your explicit consent).</li>
-                <li>To manage our relationship with you.</li>
+                <li>To provide decentralized, cross-hospital access to your health records for authorized medical professionals.</li>
+                <li>To facilitate automated blood report analysis and generate clinical insights.</li>
+                <li>To manage user authentication, platform security, and account administration.</li>
+                <li>To track user activity for the health reward system (e.g., step counting).</li>
             </ul>
 
-            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>4. Data Security & Storage</h2>
-            <p>Your data is securely stored on Google Cloud infrastructure (Firebase Firestore & Storage). We have put in place appropriate security measures to prevent your personal data from being accidentally lost, used or accessed in an unauthorized way, altered or disclosed.</p>
+            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>4. AI Processing Disclosure (OpenAI Usage)</h2>
+            <p>MedAxis AI utilizes advanced artificial intelligence models, specifically OpenAI's GPT-4o-mini, to analyze your medical documents (such as blood reports). By uploading these documents, you acknowledge and consent that the text content of your reports is securely transmitted to OpenAI via API for processing. The AI's outputs are used to supplement — not replace — professional medical diagnoses. We ensure that our API usage complies with OpenAI's strict data privacy agreements for healthcare applications, meaning your data is not used to train their public models.</p>
 
-            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>5. Your Legal Rights</h2>
-            <p>Under certain circumstances, you have rights under data protection laws in relation to your personal data, including the right to request access, correction, erasure, or restriction of processing.</p>
+            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>5. Data Storage (Firebase, Firestore, Storage)</h2>
+            <p>We use Google Firebase as our primary cloud infrastructure provider. All textual structured data (such as FHIR resources, user profiles, and consent logs) is stored in Firebase Firestore. All uploaded files, including PDF blood reports, are securely stored in Firebase Storage. These services employ industry-standard encryption at rest and in transit.</p>
 
-            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>6. Contact Us</h2>
-            <p>If you have any questions about this privacy policy or our privacy practices, please contact us at: privacy@medaxis.ai</p>
+            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>6. Security Measures</h2>
+            <p>We have implemented robust, production-grade security measures to safeguard your information:</p>
+            <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }}>
+                <li><strong>Role-Based Access Control:</strong> Strict Firebase Security Rules ensure that clinical data collections are inaccessible directly from the client. Data is only served through our secure backend API after verifying JWT authentication tokens and specific user roles (Patient, Doctor, Hospital, Super Admin).</li>
+                <li><strong>Consent Verification:</strong> Doctors cannot access a patient's records or prescribe medications without an explicit consent record granted by the patient.</li>
+                <li><strong>Audit Logging:</strong> Critical actions, such as viewing a patient's history or issuing a prescription, are heavily audited and logged.</li>
+            </ul>
+
+            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>7. User Rights</h2>
+            <p>Depending on your jurisdiction, you have the right to:</p>
+            <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }}>
+                <li>Access the personal and medical data we hold about you.</li>
+                <li>Request corrections to inaccurate or incomplete data.</li>
+                <li>Manage and revoke consent granted to specific healthcare professionals at any time.</li>
+                <li>Request the deletion of your account and associated personal data.</li>
+            </ul>
+
+            <h2 style={{ marginTop: '2rem', marginBottom: '1rem', color: 'var(--accent)' }}>8. Contact Information</h2>
+            <p>If you have any questions, concerns, or requests regarding this Privacy Policy or the handling of your data, please contact our Data Protection Officer at: <a href="mailto:preethiim2003@gmail.com" style={{ color: 'var(--primary)', textDecoration: 'none' }}>preethiim2003@gmail.com</a></p>
         </div>
     );
 };
