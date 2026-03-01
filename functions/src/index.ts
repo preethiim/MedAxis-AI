@@ -36,15 +36,18 @@ export const registerUser = onCall(async (request) => {
 
         if (name) userData.name = name;
 
+        // Auto-generate IDs if not provided
         if (role === 'patient') {
-            userData.healthId = healthId || "";
+            const generatedHealthId = 'PAT-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+            userData.healthId = healthId || generatedHealthId;
             userData.height = height || "";
             userData.weight = weight || "";
             userData.bmi = bmi || "";
         } else if (role === 'hospital') {
             userData.employeeId = employeeId || "";
         } else if (role === 'doctor') {
-            // additional doctor fields can be added here
+            const generatedDoctorId = 'DOC-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+            userData.doctorId = generatedDoctorId;
         }
 
         await admin.firestore().collection('users').doc(userRecord.uid).set(userData);
@@ -55,6 +58,14 @@ export const registerUser = onCall(async (request) => {
             message: "User successfully registered with role " + role
         };
     } catch (error: any) {
-        throw new HttpsError("internal", error.message);
+        // Log the exact internal error so Firebase logs catch it
+        console.error("Registration Error details:", error);
+
+        // If it's a known auth error (like email-already-exists), pass that message safely.
+        if (error.code && error.code.startsWith('auth/')) {
+            throw new HttpsError("already-exists", error.message);
+        }
+
+        throw new HttpsError("internal", error.message || "An unknown error occurred during registration.");
     }
 });
