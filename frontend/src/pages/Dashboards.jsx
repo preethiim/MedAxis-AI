@@ -1,8 +1,117 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle, Search, FileText, Activity } from 'lucide-react';
+import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle, Search, FileText, Activity, Pill, Plus, Trash2, X } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+// ─── Prescription Modal ─────────────────────────────────────────────────────
+
+const PrescriptionModal = ({ patientUid, currentUser, onClose, onSuccess }) => {
+    const [medications, setMedications] = useState([{ name: '', dosage: '', frequency: '', duration: '' }]);
+    const [notes, setNotes] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    const addMed = () => setMedications(prev => [...prev, { name: '', dosage: '', frequency: '', duration: '' }]);
+    const removeMed = (idx) => setMedications(prev => prev.filter((_, i) => i !== idx));
+    const updateMed = (idx, field, val) => setMedications(prev => prev.map((m, i) => i === idx ? { ...m, [field]: val } : m));
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        const valid = medications.every(m => m.name.trim() && m.dosage.trim());
+        if (!valid) { setError('Each medication needs at least a name and dosage.'); return; }
+        setSubmitting(true); setError('');
+        try {
+            const token = await currentUser.getIdToken();
+            const res = await fetch(`${API_BASE_URL}/doctor/add-prescription`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ patient_uid: patientUid, medications, notes })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to create prescription');
+            onSuccess(data.prescription);
+            onClose();
+        } catch (err) { setError(err.message); }
+        finally { setSubmitting(false); }
+    };
+
+    const fieldStyle = { margin: 0, fontSize: '0.85rem', padding: '0.55rem 0.75rem' };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+            onClick={onClose}>
+            {/* Backdrop */}
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} />
+
+            {/* Modal */}
+            <div className="glass-panel" onClick={e => e.stopPropagation()}
+                style={{ position: 'relative', width: '100%', maxWidth: 600, maxHeight: '90vh', overflow: 'auto', border: '1px solid var(--border-glow)' }}>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Pill size={20} /> New Prescription</h3>
+                    <button onClick={onClose} className="btn-outline" style={{ padding: '0.4rem', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
+                </div>
+
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '1rem', padding: '0.5rem 0.75rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                    Patient: <span style={{ color: 'var(--primary)', fontFamily: 'monospace' }}>{patientUid.substring(0, 12)}...</span>
+                </div>
+
+                {error && <div className="error-msg" style={{ marginBottom: '1rem' }}><AlertCircle size={14} /> {error}</div>}
+
+                <form onSubmit={handleSubmit}>
+                    {medications.map((med, idx) => (
+                        <div key={idx} style={{ padding: '0.75rem', marginBottom: '0.75rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>MEDICATION {idx + 1}</span>
+                                {medications.length > 1 && (
+                                    <button type="button" onClick={() => removeMed(idx)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '0.2rem' }}><Trash2 size={14} /></button>
+                                )}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                <input className="form-input" placeholder="Medication name *" value={med.name} onChange={e => updateMed(idx, 'name', e.target.value)} style={fieldStyle} required />
+                                <input className="form-input" placeholder="Dosage (e.g. 500mg) *" value={med.dosage} onChange={e => updateMed(idx, 'dosage', e.target.value)} style={fieldStyle} required />
+                                <input className="form-input" placeholder="Frequency (e.g. twice daily)" value={med.frequency} onChange={e => updateMed(idx, 'frequency', e.target.value)} style={fieldStyle} />
+                                <input className="form-input" placeholder="Duration (e.g. 7 days)" value={med.duration} onChange={e => updateMed(idx, 'duration', e.target.value)} style={fieldStyle} />
+                            </div>
+                        </div>
+                    ))}
+
+                    <button type="button" onClick={addMed} className="btn-outline" style={{ width: '100%', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                        <Plus size={14} /> Add Another Medication
+                    </button>
+
+                    <div className="form-group">
+                        <label className="form-label">Doctor's Notes (optional)</label>
+                        <textarea className="form-input" rows={2} placeholder="Additional instructions, warnings, follow-up..." value={notes} onChange={e => setNotes(e.target.value)} style={{ ...fieldStyle, resize: 'vertical' }} />
+                    </div>
+
+                    <button type="submit" className="btn-primary" disabled={submitting} style={{ width: '100%' }}>
+                        {submitting ? '⏳ Creating Prescription...' : '💊 Submit Prescription'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// ─── Prescription Display Card ──────────────────────────────────────────────
+
+const PrescriptionCard = ({ rx }) => (
+    <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.05)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.12)', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', fontFamily: 'monospace' }}>{rx.id}</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>{rx.created_at ? new Date(rx.created_at).toLocaleDateString() : ''}</span>
+        </div>
+        {rx.medications?.map((med, i) => (
+            <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', marginBottom: '0.25rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--primary)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-main)' }}>{med.medicationCodeableConcept?.text || 'Unknown'}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{med.dosageInstruction?.[0]?.text || ''}</span>
+            </div>
+        ))}
+        {rx.notes && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.4rem', fontStyle: 'italic' }}>📝 {rx.notes}</p>}
+    </div>
+);
 
 // ─── Doctor Dashboard ──────────────────────────────────────────────────────
 
@@ -18,6 +127,10 @@ export const DoctorDashboard = () => {
     const [searchResult, setSearchResult] = useState(null);
     const [searchError, setSearchError] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
+
+    // Prescription state
+    const [rxModalPatient, setRxModalPatient] = useState(null);
+    const [prescriptions, setPrescriptions] = useState({}); // { patientUid: [rx, rx, ...] }
 
     useEffect(() => {
         const fetchReports = async () => {
@@ -70,6 +183,14 @@ export const DoctorDashboard = () => {
         finally { setSearchLoading(false); }
     };
 
+    const handlePrescriptionSuccess = (rx) => {
+        const uid = rx.patient_uid;
+        setPrescriptions(prev => ({
+            ...prev,
+            [uid]: [rx, ...(prev[uid] || [])]
+        }));
+    };
+
     const tabs = [
         { id: 'patients', label: '🔍 Search Patient' },
         { id: 'reports', label: '📋 My Patients' },
@@ -77,6 +198,16 @@ export const DoctorDashboard = () => {
 
     return (
         <div className="dashboard">
+            {/* Prescription Modal */}
+            {rxModalPatient && (
+                <PrescriptionModal
+                    patientUid={rxModalPatient}
+                    currentUser={currentUser}
+                    onClose={() => setRxModalPatient(null)}
+                    onSuccess={handlePrescriptionSuccess}
+                />
+            )}
+
             <div className="dashboard-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #34d399)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -133,7 +264,21 @@ export const DoctorDashboard = () => {
                                         </div>
                                     ))}
                                 </div>
+
+                                {/* Prescribe button for searched patient */}
+                                <button className="btn-primary" onClick={() => setRxModalPatient(searchResult.patient.uid)}
+                                    style={{ width: 'auto', marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                                    <Pill size={14} /> Write Prescription
+                                </button>
                             </div>
+
+                            {/* Prescriptions for this patient */}
+                            {prescriptions[searchResult.patient.uid]?.length > 0 && (
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Pill size={16} /> Prescriptions</h4>
+                                    {prescriptions[searchResult.patient.uid].map((rx, i) => <PrescriptionCard key={i} rx={rx} />)}
+                                </div>
+                            )}
 
                             {searchResult.reports.length > 0 && (
                                 <div>
@@ -198,11 +343,25 @@ export const DoctorDashboard = () => {
                                         ))}
                                     </div>
 
-                                    {/* Add Comment */}
-                                    <div className="search-bar">
-                                        <input type="text" className="form-input" placeholder="Add a clinical comment..." value={commentData[report.id] || ''} onChange={e => handleCommentChange(report.id, e.target.value)} style={{ margin: 0, flex: 1 }} />
-                                        <button onClick={() => submitComment(report.patient_uid, report.id)} className="btn-primary" style={{ margin: 0, width: 'auto' }}>Post</button>
+                                    {/* Action Row: Comment + Prescription */}
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                                        <div className="search-bar" style={{ flex: 1, minWidth: '200px' }}>
+                                            <input type="text" className="form-input" placeholder="Add a clinical comment..." value={commentData[report.id] || ''} onChange={e => handleCommentChange(report.id, e.target.value)} style={{ margin: 0, flex: 1 }} />
+                                            <button onClick={() => submitComment(report.patient_uid, report.id)} className="btn-primary" style={{ margin: 0, width: 'auto' }}>Post</button>
+                                        </div>
+                                        <button onClick={() => setRxModalPatient(report.patient_uid)} className="btn-outline"
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', whiteSpace: 'nowrap' }}>
+                                            <Pill size={14} /> Prescribe
+                                        </button>
                                     </div>
+
+                                    {/* Prescriptions for this patient */}
+                                    {prescriptions[report.patient_uid]?.length > 0 && (
+                                        <div>
+                                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Pill size={14} /> Prescriptions</div>
+                                            {prescriptions[report.patient_uid].map((rx, i) => <PrescriptionCard key={i} rx={rx} />)}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
