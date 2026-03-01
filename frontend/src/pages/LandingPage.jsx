@@ -56,13 +56,26 @@ export const LandingPage = () => {
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.5 }}>Doctors can quickly look up records across different hospitals, add clinical notes, and create digital prescriptions seamlessly.</p>
                     </div>
                 </div>
+
+                {/* Data Privacy & Google Integration Disclosure */}
+                <div style={{ marginTop: '5rem', maxWidth: '800px', width: '100%', background: 'rgba(52, 211, 153, 0.05)', padding: '2.5rem', borderRadius: '16px', border: '1px solid rgba(52, 211, 153, 0.2)', textAlign: 'left' }}>
+                    <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <ShieldCheck size={28} /> Transparent Data Usage
+                    </h3>
+                    <p style={{ color: 'var(--text-main)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1rem' }}>
+                        <strong>Why we request your data:</strong> MedAxis AI requests access to your basic Google profile (Name and Email) during signup exclusively to create and secure your medical account identity. This ensures you can safely log in across devices and access your centralized health records without remembering additional passwords.
+                    </p>
+                    <p style={{ color: 'var(--text-main)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+                        We never share your email, profile information, or medical records with advertisers or external third parties. You maintain full ownership and control, and can grant or revoke doctor access at any time through your dashboard.
+                    </p>
+                </div>
             </main>
 
             {/* Footer */}
             <footer style={{ padding: '2rem', textAlign: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--input-bg)' }}>
                 <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: '1rem' }}>&copy; 2026 MedAxis AI. All rights reserved.</p>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', fontSize: '0.85rem' }}>
-                    <Link to="/privacy-policy" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Privacy Policy</Link>
+                    <Link to="/privacy" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Privacy Policy</Link>
                     <Link to="/terms-of-service" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Terms of Service</Link>
                 </div>
             </footer>
