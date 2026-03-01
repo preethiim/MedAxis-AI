@@ -1,67 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle, Search, FileText, Activity } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-const DashboardBase = ({ title, icon, roleName }) => {
-    const { currentUser, logout } = useAuth();
-
-    return (
-        <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    {icon}
-                    <h2>{title}</h2>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>{currentUser?.email}</span>
-                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.85rem' }}>
-                        {roleName}
-                    </span>
-                    <button onClick={logout} className="btn-primary" style={{ padding: '0.5rem 1rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-                        <LogOut size={16} /> Sign Out
-                    </button>
-                </div>
-            </header>
-
-            <div className="glass-panel" style={{ minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: 'var(--text-main)' }}>Welcome to your Dashboard</h3>
-                    <p>MedAxis AI features for {roleName}s will appear here.</p>
-                </div>
-            </div>
-        </div>
-    );
-};
+// ─── Doctor Dashboard ──────────────────────────────────────────────────────
 
 export const DoctorDashboard = () => {
     const { currentUser, logout } = useAuth();
+    const [activeTab, setActiveTab] = useState('patients');
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [commentData, setCommentData] = useState({});
 
-    // Patient Lookup State
     const [searchId, setSearchId] = useState('');
     const [searchResult, setSearchResult] = useState(null);
     const [searchError, setSearchError] = useState('');
+    const [searchLoading, setSearchLoading] = useState(false);
 
     useEffect(() => {
         const fetchReports = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/doctor/reports?doctor_uid=${currentUser.uid}`);
+                const token = await currentUser.getIdToken();
+                const res = await fetch(`${API_BASE_URL}/doctor/reports?doctor_uid=${currentUser.uid}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Failed to fetch reports');
-                setReports(data.reports);
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
+                if (res.ok) setReports(data.reports || []);
+            } catch (err) { setError(err.message); }
+            finally { setLoading(false); }
         };
         fetchReports();
-    }, [currentUser.uid]);
+    }, [currentUser]);
 
     const handleCommentChange = (reportId, value) => {
         setCommentData(prev => ({ ...prev, [reportId]: value }));
@@ -70,162 +41,171 @@ export const DoctorDashboard = () => {
     const submitComment = async (patientUid, reportId) => {
         const comment = commentData[reportId];
         if (!comment || !comment.trim()) return;
-
         try {
+            const token = await currentUser.getIdToken();
             const res = await fetch(`${API_BASE_URL}/doctor/add-comment`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    doctor_uid: currentUser.uid,
-                    patient_uid: patientUid,
-                    report_id: reportId,
-                    comment: comment
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ doctor_uid: currentUser.uid, patient_uid: patientUid, report_id: reportId, comment })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Failed to submit comment');
-
-            // Optimistically update the UI
+            if (!res.ok) throw new Error(data.detail || 'Failed');
             setReports(reports.map(rep => {
-                if (rep.id === reportId) {
-                    const updatedNotes = [...(rep.note || []), data.note];
-                    return { ...rep, note: updatedNotes };
-                }
+                if (rep.id === reportId) return { ...rep, note: [...(rep.note || []), data.note] };
                 return rep;
             }));
-
-            // Clear input
             setCommentData(prev => ({ ...prev, [reportId]: "" }));
-
-        } catch (err) {
-            alert(err.message);
-        }
+        } catch (err) { alert(err.message); }
     };
 
-    return (
-        <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <Stethoscope size={32} color="#34d399" />
-                    <h2>Doctor Workspace</h2>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>{currentUser?.email}</span>
-                    <button onClick={logout} className="btn-primary" style={{ padding: '0.5rem 1rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-                        <LogOut size={16} /> Sign Out
-                    </button>
-                </div>
-            </header>
+    const handleSearch = async () => {
+        if (!searchId.trim()) return;
+        setSearchLoading(true); setSearchError(''); setSearchResult(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/patient/lookup?health_id=${searchId.trim()}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Not found');
+            setSearchResult(data);
+        } catch (err) { setSearchError(err.message); }
+        finally { setSearchLoading(false); }
+    };
 
-            {/* Patient Lookup */}
-            <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '2rem' }}>
-                <h4 style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={18} /> Search Patient by Health ID</h4>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input type="text" className="form-input" placeholder="e.g. PAT-A1B2C3" value={searchId} onChange={e => setSearchId(e.target.value)} style={{ margin: 0, flex: 1 }} />
-                    <button className="btn-primary" style={{ margin: 0, width: 'auto' }} onClick={async () => {
-                        setSearchError(''); setSearchResult(null);
-                        try {
-                            const res = await fetch(`${API_BASE_URL}/patient/lookup?health_id=${searchId.trim()}`);
-                            const data = await res.json();
-                            if (!res.ok) throw new Error(data.detail || 'Not found');
-                            setSearchResult(data);
-                        } catch (err) { setSearchError(err.message); }
-                    }}>Search</button>
-                </div>
-                {searchError && <div style={{ color: '#ef4444', marginTop: '0.5rem', fontSize: '0.85rem' }}>{searchError}</div>}
-                {searchResult && (
-                    <div style={{ marginTop: '1rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                        <h4 style={{ color: '#34d399', marginBottom: '0.5rem' }}>✓ Patient Found</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem', fontSize: '0.9rem' }}>
-                            <span style={{ color: 'var(--text-muted)' }}>Name:</span><span>{searchResult.patient.name}</span>
-                            <span style={{ color: 'var(--text-muted)' }}>Health ID:</span><span style={{ fontFamily: 'monospace', color: '#60a5fa' }}>{searchResult.patient.healthId}</span>
-                            <span style={{ color: 'var(--text-muted)' }}>Email:</span><span>{searchResult.patient.email}</span>
-                        </div>
-                        {searchResult.reports.length > 0 && (
-                            <div style={{ marginTop: '0.75rem' }}>
-                                <strong style={{ fontSize: '0.85rem' }}>Reports ({searchResult.reports.length}):</strong>
-                                {searchResult.reports.map((r, i) => (
-                                    <div key={i} style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.85rem' }}>
-                                        Report: {r.id}
-                                        {r.presentedForm?.[0]?.url && <a href={r.presentedForm[0].url} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', marginLeft: '0.5rem' }}>View PDF →</a>}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+    const tabs = [
+        { id: 'patients', label: '🔍 Search Patient' },
+        { id: 'reports', label: '📋 My Patients' },
+    ];
+
+    return (
+        <div className="dashboard">
+            <div className="dashboard-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #34d399)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Stethoscope size={20} color="white" />
                     </div>
-                )}
+                    <div>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Doctor Workspace</h2>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span className="badge badge-success">Doctor</span>
+                    <button onClick={logout} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><LogOut size={14} /> Sign Out</button>
+                </div>
             </div>
 
-            {error && <div style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</div>}
-            {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading patient reports...</p> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    {reports.length === 0 ? (
-                        <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            No diagnostic reports available.
-                        </div>
-                    ) : (
-                        reports.map(report => (
-                            <div key={report.id} className="glass-panel" style={{ padding: '1.5rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                    <h3 style={{ margin: 0, color: 'var(--text-main)' }}>Diagnostic Report: {report.id}</h3>
-                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Patient UID: {report.patient_uid}</span>
+            {/* Tabs */}
+            <div className="tab-list">
+                {tabs.map(tab => (
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}>{tab.label}</button>
+                ))}
+            </div>
+
+            {error && <div className="error-msg"><AlertCircle size={16} /> {error}</div>}
+
+            {/* Patient Search Tab */}
+            {activeTab === 'patients' && (
+                <div className="glass-panel">
+                    <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={20} /> Search Patient by Health ID</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>Search for any patient across all hospitals. Enter their Health ID to view records.</p>
+                    <div className="search-bar" style={{ marginBottom: '1rem' }}>
+                        <input type="text" className="form-input" placeholder="e.g. PAT-A1B2C3" value={searchId} onChange={e => setSearchId(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} style={{ margin: 0, flex: 1 }} />
+                        <button className="btn-primary" style={{ margin: 0, width: 'auto' }} onClick={handleSearch} disabled={searchLoading}>{searchLoading ? '...' : 'Search'}</button>
+                    </div>
+                    {searchError && <div style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem' }}>{searchError}</div>}
+
+                    {searchResult && (
+                        <div style={{ marginTop: '1rem' }}>
+                            <div className="report-card" style={{ marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                                    <CheckCircle size={18} color="var(--success)" />
+                                    <h4 style={{ color: 'var(--success)' }}>Patient Found</h4>
                                 </div>
-
-                                {report.presentedForm && report.presentedForm.length > 0 && (
-                                    <div style={{ marginBottom: '1rem' }}>
-                                        <a href={report.presentedForm[0].url} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', textDecoration: 'none', fontSize: '0.9rem' }}>
-                                            &rarr; View Original Blood Report PDF
-                                        </a>
-                                    </div>
-                                )}
-
-                                <div style={{ background: 'var(--input-bg)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
-                                    <h4 style={{ color: 'var(--text-main)', marginBottom: '0.5rem' }}>Notes & Analysis</h4>
-                                    {(!report.note || report.note.length === 0) ? (
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>No analysis or notes attached.</p>
-                                    ) : (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                            {report.note.map((n, i) => (
-                                                <div key={i} style={{
-                                                    padding: '0.75rem',
-                                                    borderRadius: '6px',
-                                                    background: n.type === 'doctor_comment' ? 'rgba(52, 211, 153, 0.05)' : 'rgba(16, 185, 129, 0.05)',
-                                                    borderLeft: n.type === 'doctor_comment' ? '3px solid #34d399' : '3px solid #10b981'
-                                                }}>
-                                                    {n.type === 'doctor_comment' ? (
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                                            <span>Dr. {n.author.substring(0, 5)}...</span>
-                                                            <span>{new Date(n.timestamp).toLocaleString()}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div style={{ marginBottom: '0.5rem', fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>AI Clinical Analysis</div>
-                                                    )}
-                                                    <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem', color: 'var(--text-main)' }}>{n.text}</div>
-                                                </div>
-                                            ))}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                                    {[
+                                        ['Name', searchResult.patient.name],
+                                        ['Health ID', searchResult.patient.healthId],
+                                        ['Email', searchResult.patient.email],
+                                        ['BMI', searchResult.patient.bmi || '—'],
+                                    ].map(([label, value], i) => (
+                                        <div key={i} style={{ padding: '0.6rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+                                            <div style={{ fontSize: '0.9rem', fontWeight: 500, marginTop: '0.15rem', fontFamily: label === 'Health ID' ? 'monospace' : 'inherit', color: label === 'Health ID' ? 'var(--primary)' : 'var(--text-main)' }}>{value}</div>
                                         </div>
-                                    )}
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="Add a clinical comment..."
-                                        value={commentData[report.id] || ''}
-                                        onChange={(e) => handleCommentChange(report.id, e.target.value)}
-                                        style={{ margin: 0, flex: 1 }}
-                                    />
-                                    <button
-                                        onClick={() => submitComment(report.patient_uid, report.id)}
-                                        className="btn-primary"
-                                        style={{ margin: 0, width: 'auto' }}
-                                    >
-                                        Post Comment
-                                    </button>
+                                    ))}
                                 </div>
                             </div>
-                        ))
+
+                            {searchResult.reports.length > 0 && (
+                                <div>
+                                    <h4 style={{ fontSize: '0.95rem', marginBottom: '0.75rem' }}>Reports ({searchResult.reports.length})</h4>
+                                    {searchResult.reports.map((r, i) => {
+                                        let aiText = '';
+                                        const aiNote = r.note?.find(n => !n.type || n.type !== 'doctor_comment');
+                                        if (aiNote) aiText = aiNote.text || '';
+                                        return (
+                                            <div key={i} className="report-card" style={{ marginBottom: '0.75rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Report: {r.id}</span>
+                                                    {r.presentedForm?.[0]?.url && <a href={r.presentedForm[0].url} target="_blank" rel="noreferrer" className="link" style={{ fontSize: '0.8rem' }}>View PDF →</a>}
+                                                </div>
+                                                {aiText && <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', whiteSpace: 'pre-wrap', lineHeight: 1.6, borderLeft: '3px solid var(--success)', paddingLeft: '0.75rem', margin: '0.5rem 0' }}>{aiText}</p>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* My Patients Reports Tab */}
+            {activeTab === 'reports' && (
+                <div>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                            <span className="loader" style={{ display: 'block', margin: '0 auto 1rem' }}></span>Loading reports...
+                        </div>
+                    ) : reports.length === 0 ? (
+                        <div className="glass-panel" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                            <FileText size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                            <p>No patient reports assigned to you yet.</p>
+                            <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Use the "Search Patient" tab to find patients by their Health ID.</p>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            {reports.map(report => (
+                                <div key={report.id} className="glass-panel">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                        <h4 style={{ fontSize: '1rem' }}>Report: {report.id}</h4>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Patient: {report.patient_uid?.substring(0, 8)}...</span>
+                                    </div>
+
+                                    {report.presentedForm?.[0]?.url && (
+                                        <a href={report.presentedForm[0].url} target="_blank" rel="noreferrer" className="link" style={{ fontSize: '0.85rem', display: 'inline-block', marginBottom: '1rem' }}>→ View Blood Report PDF</a>
+                                    )}
+
+                                    {/* Notes & Analysis */}
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        {report.note?.map((n, i) => (
+                                            <div key={i} style={{ padding: '0.75rem', marginBottom: '0.5rem', borderRadius: 'var(--radius-sm)', background: n.type === 'doctor_comment' ? 'rgba(139,92,246,0.05)' : 'rgba(16,185,129,0.05)', borderLeft: `3px solid ${n.type === 'doctor_comment' ? 'var(--accent)' : 'var(--success)'}` }}>
+                                                <div style={{ fontSize: '0.75rem', color: n.type === 'doctor_comment' ? 'var(--accent)' : 'var(--success)', fontWeight: 600, marginBottom: '0.3rem' }}>
+                                                    {n.type === 'doctor_comment' ? `Dr. Comment` : 'AI Analysis'}
+                                                </div>
+                                                <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem', lineHeight: 1.6 }}>{n.text}</div>
+                                                {n.timestamp && <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '0.3rem' }}>{new Date(n.timestamp).toLocaleString()}</div>}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Add Comment */}
+                                    <div className="search-bar">
+                                        <input type="text" className="form-input" placeholder="Add a clinical comment..." value={commentData[report.id] || ''} onChange={e => handleCommentChange(report.id, e.target.value)} style={{ margin: 0, flex: 1 }} />
+                                        <button onClick={() => submitComment(report.patient_uid, report.id)} className="btn-primary" style={{ margin: 0, width: 'auto' }}>Post</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
             )}
@@ -233,353 +213,122 @@ export const DoctorDashboard = () => {
     );
 };
 
+// ─── Hospital Dashboard ────────────────────────────────────────────────────
+
 export const HospitalDashboard = () => {
     const { currentUser, logout } = useAuth();
-    const [stats, setStats] = useState(null);
-    const [doctors, setDoctors] = useState([]);
-    const [auditLogs, setAuditLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [activeTab, setActiveTab] = useState('lookup');
 
-    const [patients, setPatients] = useState([]);
+    const [searchId, setSearchId] = useState('');
+    const [searchResult, setSearchResult] = useState(null);
+    const [searchError, setSearchError] = useState('');
 
-    // Role Assignment State
     const [assignUid, setAssignUid] = useState('');
     const [assignRole, setAssignRole] = useState('doctor');
     const [assignLoading, setAssignLoading] = useState(false);
     const [assignMessage, setAssignMessage] = useState(null);
 
-    // Patient Assignment State
-    const [assignDocUid, setAssignDocUid] = useState('');
-    const [assignPatUid, setAssignPatUid] = useState('');
-    const [patAssignLoading, setPatAssignLoading] = useState(false);
-    const [patAssignMessage, setPatAssignMessage] = useState(null);
+    useEffect(() => { setLoading(false); }, []);
 
-    const fetchDashboardData = async () => {
-        if (!currentUser) return;
+    const handleSearch = async () => {
+        if (!searchId.trim()) return;
+        setSearchError(''); setSearchResult(null);
         try {
-            // Get fresh token to pass in Authorization header
-            const token = await currentUser.getIdToken();
-            const headers = { 'Authorization': `Bearer ${token}` };
-
-            // Fetch stats, doctors, and audit logs in parallel
-            const [statsRes, doctorsRes, logsRes, patientsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/hospital/stats`, { headers }),
-                fetch(`${API_BASE_URL}/hospital/doctors`, { headers }),
-                fetch(`${API_BASE_URL}/hospital/audit-logs`, { headers }),
-                fetch(`${API_BASE_URL}/hospital/patients`, { headers })
-            ]);
-
-            if (!statsRes.ok || !doctorsRes.ok || !logsRes.ok || !patientsRes.ok) {
-                throw new Error("Failed to fetch hospital dashboard data. Ensure your account has the 'hospital' role.");
-            }
-
-            const statsData = await statsRes.json();
-            const doctorsData = await doctorsRes.json();
-            const logsData = await logsRes.json();
-            const patientsData = await patientsRes.json();
-
-            setStats(statsData);
-            setDoctors(doctorsData.doctors || []);
-            setAuditLogs(logsData.audit_logs || []);
-            setPatients(patientsData.patients || []);
-
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchDashboardData();
-    }, [currentUser]);
-
-    const handleAssignPatient = async (e) => {
-        e.preventDefault();
-        if (!assignDocUid || !assignPatUid) return;
-
-        setPatAssignLoading(true);
-        setPatAssignMessage(null);
-        try {
-            const token = await currentUser.getIdToken();
-            const res = await fetch(`${API_BASE_URL}/hospital/assign-patient`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    hospital_uid: currentUser.uid,
-                    doctor_uid: assignDocUid,
-                    patient_uid: assignPatUid
-                })
-            });
+            const res = await fetch(`${API_BASE_URL}/patient/lookup?health_id=${searchId.trim()}`);
             const data = await res.json();
-
-            if (!res.ok) throw new Error(data.detail || 'Failed to assign patient.');
-
-            setPatAssignMessage({ type: 'success', text: `Patient successfully assigned.` });
-            setAssignDocUid('');
-            setAssignPatUid('');
-
-            // Refresh data seamlessly
-            fetchDashboardData();
-        } catch (err) {
-            setPatAssignMessage({ type: 'error', text: err.message });
-        } finally {
-            setPatAssignLoading(false);
-        }
+            if (!res.ok) throw new Error(data.detail || 'Not found');
+            setSearchResult(data);
+        } catch (err) { setSearchError(err.message); }
     };
 
-    const handleAssignRole = async (e) => {
-        e.preventDefault();
+    const handleAssignRole = async () => {
         if (!assignUid.trim()) return;
-
-        // Prevent duplicate doctors (basic UI check)
-        if (assignRole === 'doctor' && doctors.some(d => d.uid === assignUid.trim())) {
-            setAssignMessage({ type: 'error', text: 'User is already registered as a doctor.' });
-            return;
-        }
-
-        setAssignLoading(true);
-        setAssignMessage(null);
+        setAssignLoading(true); setAssignMessage(null);
         try {
             const token = await currentUser.getIdToken();
             const res = await fetch(`${API_BASE_URL}/admin/assign-role`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    assigner_uid: currentUser.uid,
-                    target_uid: assignUid.trim(),
-                    role: assignRole
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ uid: assignUid, role: assignRole })
             });
             const data = await res.json();
-
-            if (!res.ok) throw new Error(data.detail || 'Failed to assign role.');
-
-            setAssignMessage({ type: 'success', text: `Successfully updated user role to ${assignRole}.` });
+            if (!res.ok) throw new Error(data.detail || 'Failed');
+            setAssignMessage({ type: 'success', text: data.message || 'Role assigned!' });
             setAssignUid('');
-
-            // Refresh data seamlessly
-            fetchDashboardData();
-        } catch (err) {
-            setAssignMessage({ type: 'error', text: err.message });
-        } finally {
-            setAssignLoading(false);
-        }
+        } catch (err) { setAssignMessage({ type: 'error', text: err.message }); }
+        finally { setAssignLoading(false); }
     };
 
+    const tabs = [
+        { id: 'lookup', label: '🔍 Patient Lookup' },
+        { id: 'manage', label: '👥 Manage Staff' },
+    ];
+
     return (
-        <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <Building2 size={32} color="#f472b6" />
-                    <h2>Hospital Administration</h2>
+        <div className="dashboard">
+            <div className="dashboard-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #ec4899, #f472b6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Building2 size={20} color="white" />
+                    </div>
+                    <div>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Hospital Admin</h2>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
+                    </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>{currentUser?.email}</span>
-                    <button onClick={logout} className="btn-primary" style={{ padding: '0.5rem 1rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
-                        <LogOut size={16} /> Sign Out
-                    </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span className="badge" style={{ background: 'rgba(236,72,153,0.15)', color: '#ec4899' }}>Hospital</span>
+                    <button onClick={logout} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><LogOut size={14} /> Sign Out</button>
                 </div>
-            </header>
+            </div>
 
-            {error && <div style={{ color: '#ef4444', marginBottom: '1rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>{error}</div>}
+            <div className="tab-list">
+                {tabs.map(tab => (
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}>{tab.label}</button>
+                ))}
+            </div>
 
-            {loading ? (
-                <p style={{ color: 'var(--text-muted)' }}>Loading hospital statistics...</p>
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    {/* Stats Grid */}
-                    {stats && (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
-                            <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'center' }}>
-                                <h4 style={{ color: 'var(--text-muted)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Total Patients</h4>
-                                <div style={{ fontSize: '2.5rem', fontWeight: 700, color: '#60a5fa' }}>{stats.total_patients}</div>
+            {/* Patient Lookup */}
+            {activeTab === 'lookup' && (
+                <div className="glass-panel">
+                    <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={20} /> Centralized Patient Lookup</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>Search any patient from any hospital by their Health ID.</p>
+                    <div className="search-bar" style={{ marginBottom: '1rem' }}>
+                        <input type="text" className="form-input" placeholder="e.g. PAT-A1B2C3" value={searchId} onChange={e => setSearchId(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} style={{ margin: 0, flex: 1 }} />
+                        <button className="btn-primary" style={{ margin: 0, width: 'auto' }} onClick={handleSearch}>Search</button>
+                    </div>
+                    {searchError && <div style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem' }}>{searchError}</div>}
+                    {searchResult && (
+                        <div className="report-card">
+                            <h4 style={{ color: 'var(--success)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={16} /> Patient Found</h4>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                                {[['Name', searchResult.patient.name], ['Health ID', searchResult.patient.healthId], ['Email', searchResult.patient.email], ['BMI', searchResult.patient.bmi || '—']].map(([l, v], i) => (
+                                    <div key={i} style={{ padding: '0.5rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{l}</div>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{v}</div>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'center' }}>
-                                <h4 style={{ color: 'var(--text-muted)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Registered Doctors</h4>
-                                <div style={{ fontSize: '2.5rem', fontWeight: 700, color: '#34d399' }}>{stats.total_doctors}</div>
-                            </div>
-                            <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'center' }}>
-                                <h4 style={{ color: 'var(--text-muted)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>Total Reports</h4>
-                                <div style={{ fontSize: '2.5rem', fontWeight: 700, color: '#c084fc' }}>{stats.total_reports}</div>
-                            </div>
-                            <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'center', border: stats.high_risk_reports > 0 ? '1px solid rgba(239, 68, 68, 0.3)' : undefined }}>
-                                <h4 style={{ color: 'var(--text-muted)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>High Risk Alerts</h4>
-                                <div style={{ fontSize: '2.5rem', fontWeight: 700, color: stats.high_risk_reports > 0 ? '#ef4444' : '#9ca3af' }}>{stats.high_risk_reports}</div>
-                            </div>
+                            {searchResult.reports.length > 0 && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{searchResult.reports.length} report(s) on file</div>}
                         </div>
                     )}
+                </div>
+            )}
 
-                    {/* Management Forms Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-
-                        {/* Role Assignment Form */}
-                        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            <h3 style={{ margin: 0, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <UserPlus size={20} color="var(--primary)" /> Assign System Roles
-                            </h3>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
-                                Grant doctor or hospital access to an existing Firebase User via their UID.
-                            </p>
-
-                            <form onSubmit={handleAssignRole} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                                <input
-                                    type="text"
-                                    className="form-input"
-                                    placeholder="Target Firebase UID"
-                                    value={assignUid}
-                                    onChange={(e) => setAssignUid(e.target.value)}
-                                    style={{ flex: '1', minWidth: '200px', margin: 0 }}
-                                    required
-                                />
-                                <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
-                                    <select
-                                        className="form-input"
-                                        value={assignRole}
-                                        onChange={(e) => setAssignRole(e.target.value)}
-                                        style={{ flex: 1, margin: 0 }}
-                                    >
-                                        <option value="doctor">Doctor</option>
-                                        <option value="hospital">Hospital Admin</option>
-                                    </select>
-                                    <button type="submit" className="btn-primary" disabled={assignLoading} style={{ margin: 0, width: 'auto', whiteSpace: 'nowrap' }}>
-                                        {assignLoading ? 'Assigning...' : 'Assign Role'}
-                                    </button>
-                                </div>
-                            </form>
-
-                            {assignMessage && (
-                                <div style={{ padding: '0.75rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', background: assignMessage.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: assignMessage.type === 'success' ? '#10b981' : '#ef4444', border: `1px solid ${assignMessage.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}` }}>
-                                    {assignMessage.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                                    {assignMessage.text}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Patient Assignment Form */}
-                        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                            <h3 style={{ margin: 0, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <Stethoscope size={20} color="#34d399" /> Assign Patient to Doctor
-                            </h3>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
-                                Link a patient to a doctor so the doctor can review their medical reports.
-                            </p>
-
-                            <form onSubmit={handleAssignPatient} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                <select
-                                    className="form-input"
-                                    value={assignDocUid}
-                                    onChange={(e) => setAssignDocUid(e.target.value)}
-                                    style={{ margin: 0 }}
-                                    required
-                                >
-                                    <option value="" disabled>Select Doctor</option>
-                                    {doctors.map(d => (
-                                        <option key={d.uid} value={d.uid}>Dr. {d.name || d.email}</option>
-                                    ))}
-                                </select>
-                                <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
-                                    <select
-                                        className="form-input"
-                                        value={assignPatUid}
-                                        onChange={(e) => setAssignPatUid(e.target.value)}
-                                        style={{ flex: 1, margin: 0 }}
-                                        required
-                                    >
-                                        <option value="" disabled>Select Patient</option>
-                                        {patients.map(p => (
-                                            <option key={p.uid} value={p.uid}>{p.name || p.email}</option>
-                                        ))}
-                                    </select>
-                                    <button type="submit" className="btn-primary" disabled={patAssignLoading} style={{ margin: 0, width: 'auto', whiteSpace: 'nowrap' }}>
-                                        {patAssignLoading ? 'Linking...' : 'Link Patient'}
-                                    </button>
-                                </div>
-                            </form>
-
-                            {patAssignMessage && (
-                                <div style={{ padding: '0.75rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', background: patAssignMessage.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: patAssignMessage.type === 'success' ? '#10b981' : '#ef4444', border: `1px solid ${patAssignMessage.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}` }}>
-                                    {patAssignMessage.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                                    {patAssignMessage.text}
-                                </div>
-                            )}
-                        </div>
+            {/* Manage Staff */}
+            {activeTab === 'manage' && (
+                <div className="glass-panel">
+                    <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><UserPlus size={20} /> Assign Role</h3>
+                    <div className="form-group"><label className="form-label">User UID</label><input className="form-input" placeholder="Enter user UID" value={assignUid} onChange={e => setAssignUid(e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">Role</label>
+                        <select className="form-input" value={assignRole} onChange={e => setAssignRole(e.target.value)}>
+                            <option value="doctor">Doctor</option><option value="patient">Patient</option><option value="hospital">Hospital</option>
+                        </select>
                     </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-                        {/* Doctors List */}
-                        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-main)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Registered Doctors</h3>
-                            {doctors.length === 0 ? (
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No doctors found.</p>
-                            ) : (
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-                                        <thead>
-                                            <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                                                <th style={{ padding: '0.75rem 0.5rem' }}>Doctor Details</th>
-                                                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Assigned Patients</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {doctors.map(doc => (
-                                                <tr key={doc.uid} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                                    <td style={{ padding: '1rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                                        <div style={{ background: 'rgba(52, 211, 153, 0.1)', padding: '0.4rem', borderRadius: '50%' }}>
-                                                            <User size={16} color="#34d399" />
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ color: 'var(--text-main)', fontWeight: 500 }}>{doc.name || 'Unnamed Doctor'}</div>
-                                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{doc.email}</div>
-                                                        </div>
-                                                    </td>
-                                                    <td style={{ padding: '1rem 0.5rem', textAlign: 'center' }}>
-                                                        <span style={{ background: 'rgba(255,255,255,0.05)', padding: '0.3rem 0.8rem', borderRadius: '20px', color: 'var(--text-main)', fontWeight: '600' }}>
-                                                            {doc.patient_count || 0}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Audit Logs */}
-                        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-main)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Recent Audit Logs</h3>
-                            {auditLogs.length === 0 ? (
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No audit logs found.</p>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '0.5rem' }}>
-                                    {auditLogs.map((log, i) => (
-                                        <div key={i} style={{ background: 'var(--input-bg)', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                                <span style={{ color: '#60a5fa', fontWeight: 600, fontSize: '0.85rem' }}>{log.action}</span>
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                                                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Unknown Time'}
-                                                </span>
-                                            </div>
-                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                                                <div><strong style={{ color: 'var(--text-main)' }}>Actor UID:</strong> {log.doctor_uid || log.assigner_uid}</div>
-                                                {log.patient_uid && <div><strong style={{ color: 'var(--text-main)' }}>Target Patient:</strong> {log.patient_uid}</div>}
-                                                {log.target_uid && <div><strong style={{ color: 'var(--text-main)' }}>Target User:</strong> {log.target_uid}</div>}
-                                                {log.assigned_role && <div><strong style={{ color: 'var(--text-main)' }}>Role Assigned:</strong> <span style={{ color: '#34d399' }}>{log.assigned_role}</span></div>}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <button className="btn-primary" onClick={handleAssignRole} disabled={assignLoading}>{assignLoading ? 'Assigning...' : 'Assign Role'}</button>
+                    {assignMessage && <div style={{ marginTop: '0.75rem', color: assignMessage.type === 'success' ? 'var(--success)' : 'var(--danger)', fontSize: '0.85rem' }}>{assignMessage.text}</div>}
                 </div>
             )}
         </div>
