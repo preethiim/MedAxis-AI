@@ -106,6 +106,80 @@ class PatientConsentRequest(BaseModel):
     doctor_uid: str
     granted: bool = True
 
+import random
+import string
+
+class RegisterRequest(BaseModel):
+    name: str = ""
+    email: str
+    password: str
+    role: str
+    healthId: str = ""
+    employeeId: str = ""
+    height: str = ""
+    weight: str = ""
+    bmi: str = ""
+
+@app.post("/auth/register")
+def register_user(req: RegisterRequest):
+    """
+    Registers a user directly via FastAPI to bypass Firebase Cloud Functions HTTP limitations.
+    Handles Auth user creation, custom claims assignment, and Firestore document initialization.
+    """
+    from fastapi import HTTPException
+    
+    if not req.email or not req.password or not req.role:
+        raise HTTPException(status_code=400, detail="Missing essential fields: email, password, or role.")
+    
+    if req.role not in ["patient", "doctor", "hospital"]:
+        raise HTTPException(status_code=400, detail="Invalid role provided.")
+        
+    try:
+        from firebase_admin import auth
+        user_record = auth.create_user(
+            email=req.email,
+            password=req.password,
+            display_name=req.name
+        )
+        
+        # Set Role
+        auth.set_custom_user_claims(user_record.uid, {"role": req.role})
+        
+        db = firestore.client()
+        user_data = {
+            "uid": user_record.uid,
+            "role": req.role,
+            "email": req.email,
+            "createdAt": firestore.SERVER_TIMESTAMP
+        }
+        
+        if req.name:
+            user_data["name"] = req.name
+            
+        # Dynamically inject unique IDs
+        if req.role == "patient":
+            generated_health_id = "PAT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            user_data["healthId"] = req.healthId if req.healthId else generated_health_id
+            user_data["height"] = req.height
+            user_data["weight"] = req.weight
+            user_data["bmi"] = req.bmi
+        elif req.role == "hospital":
+            user_data["employeeId"] = req.employeeId
+        elif req.role == "doctor":
+            generated_doctor_id = "DOC-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            user_data["doctorId"] = generated_doctor_id
+            
+        db.collection("users").document(user_record.uid).set(user_data)
+        
+        return {"success": True, "uid": user_record.uid, "message": f"User {req.role} registered successfully"}
+        
+    except Exception as e:
+        error_msg = str(e)
+        if "EMAIL_EXISTS" in error_msg:
+            raise HTTPException(status_code=400, detail="The email address is already in use by another account.")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {error_msg}")
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to MedAxis AI Backend"}
