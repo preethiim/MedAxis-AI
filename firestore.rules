@@ -2,17 +2,33 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
+    // ─── Helper Functions ───────────────────────────────────
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // 1. Users can read/write only their own document
-    match /users/{userId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    function isOwner(uid) {
+      return request.auth.uid == uid;
     }
 
-    // 2. FHIR Collections - Direct access denied (Backend via Admin SDK handles access)
+    // ─── 1. User Profiles ───────────────────────────────────
+    // Each user can only read/write their own document.
+    match /users/{uid} {
+      allow read, write: if isAuthenticated() && isOwner(uid);
+    }
+
+    // ─── 2. Step Rewards ────────────────────────────────────
+    // Each user can only read/write their own rewards.
+    match /rewards/{uid} {
+      allow read, write: if isAuthenticated() && isOwner(uid);
+    }
+    match /step_rewards/{uid} {
+      allow read, write: if isAuthenticated() && isOwner(uid);
+    }
+
+    // ─── 3. Clinical Data — DENY all client access ──────────
+    // All access happens through backend API (Admin SDK bypasses rules).
     match /fhir_patients/{document=**} {
       allow read, write: if false;
     }
@@ -23,17 +39,22 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 3. Audit Logs - No client access
+    // ─── 4. Admin Collections — DENY client access ──────────
     match /audit_logs/{document=**} {
       allow read, write: if false;
     }
-
-    // 4. Doctor Assignments - No client access
     match /doctor_assignments/{document=**} {
       allow read, write: if false;
     }
+    match /alerts/{document=**} {
+      allow read, write: if false;
+    }
+    match /consents/{document=**} {
+      allow read, write: if false;
+    }
 
-    // Default deny rule
+    // ─── 5. Default Deny ────────────────────────────────────
+    // Everything not explicitly matched above is denied.
     match /{document=**} {
       allow read, write: if false;
     }
