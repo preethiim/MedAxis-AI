@@ -91,7 +91,7 @@ const Register = () => {
         <div className="auth-container">
             <div className="auth-form-wrapper glass-panel" style={{ maxWidth: '540px' }}>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-                    <UserPlus size={48} color="#60a5fa" />
+                    <img src="/logo.png" alt="MedAxis AI Logo" style={{ height: '56px', objectFit: 'contain' }} />
                 </div>
                 <h1 className="auth-title">Join MedAxis AI</h1>
                 <p className="auth-subtitle">Create your account to get started</p>

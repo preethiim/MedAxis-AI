@@ -11,9 +11,7 @@ export const LandingPage = () => {
             {/* Header / Navbar */}
             <header style={{ padding: '1.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '12px', background: 'linear-gradient(135deg, var(--primary), var(--accent))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                        <Activity size={24} />
-                    </div>
+                    <img src="/logo.png" alt="MedAxis AI Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, letterSpacing: '-0.03em' }}>MedAxis AI</h1>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>

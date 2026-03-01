@@ -96,7 +96,7 @@ const Login = () => {
         <div className="auth-container">
             <div className="auth-form-wrapper glass-panel">
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-                    <HeartPulse size={48} color="#60a5fa" />
+                    <img src="/logo.png" alt="MedAxis AI Logo" style={{ height: '56px', objectFit: 'contain' }} />
                 </div>
                 <h1 className="auth-title">Welcome Back</h1>
                 <p className="auth-subtitle">Sign in to MedAxis AI</p>

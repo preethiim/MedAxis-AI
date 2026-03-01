@@ -136,9 +136,7 @@ export const DoctorDashboard = () => {
         <div className="dashboard">
             <div className="dashboard-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #34d399)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Stethoscope size={20} color="white" />
-                    </div>
+                    <img src="/logo.png" alt="MedAxis AI Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
                     <div>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Doctor Workspace</h2>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
@@ -388,9 +386,7 @@ export const HospitalDashboard = () => {
         <div className="dashboard">
             <div className="dashboard-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #ec4899, #f472b6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Building2 size={20} color="white" />
-                    </div>
+                    <img src="/logo.png" alt="MedAxis AI Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
                     <div>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Hospital Admin</h2>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
