@@ -7,7 +7,7 @@ const FASTAPI_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
 
 const PatientDashboard = () => {
     const { currentUser, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState('profile');
+    const [activeTab, setActiveTab] = useState('my reports');
 
     // Form States
     const [profile, setProfile] = useState({ firstName: '', lastName: '', gender: '', birthDate: '', healthId: '' });
