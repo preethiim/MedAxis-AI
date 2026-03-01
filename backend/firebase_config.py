@@ -14,7 +14,7 @@ def initialize_firebase():
         try:
             cred = None
             if os.environ.get("FIREBASE_CREDENTIALS_JSON"):
-                # Production: Parse the JSON string from the environment variable
+                # Production (Render): Parse the JSON string from the environment variable
                 cert_dict = json.loads(os.environ.get("FIREBASE_CREDENTIALS_JSON"))
                 cred = credentials.Certificate(cert_dict)
                 print("Using FIREBASE_CREDENTIALS_JSON for Firebase Auth")
@@ -23,8 +23,9 @@ def initialize_firebase():
                 cred = credentials.ApplicationDefault()
                 print("Using GOOGLE_APPLICATION_CREDENTIALS for Firebase Auth")
             else:
-                print("WARNING: Neither FIREBASE_CREDENTIALS_JSON nor GOOGLE_APPLICATION_CREDENTIALS are set.")
-                return
+                # Cloud Run / GCP: Use Application Default Credentials automatically
+                cred = credentials.ApplicationDefault()
+                print("Using Application Default Credentials (Cloud Run/GCP)")
             
             # Allow bucket customization via environment, default to MedAxis
             bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "medaxis-ai.firebasestorage.app")
