@@ -367,9 +367,8 @@ async def upload_blood_report(uid: str = Form(...), file: UploadFile = File(...)
     1. Accepts a PDF Blood Report and User UID.
     2. Uploads the raw PDF to Firebase Storage.
     3. Extracts text via PyPDF2 / OCR.
-    4. Heuristically pulls lab values.
-    5. Analyzes the values using OpenAI GPT-4o-mini.
-    6. Stores a FHIR DiagnosticReport with the AI structured summary in `.note`.
+    4. Sends FULL text to GPT-4o-mini for comprehensive analysis.
+    5. Stores a FHIR DiagnosticReport with the AI structured summary.
     """
     try:
         # 1. Read PDF bytes
@@ -383,47 +382,58 @@ async def upload_blood_report(uid: str = Form(...), file: UploadFile = File(...)
         blob.make_public()
         pdf_url = blob.public_url
         
-        # 3. Extract Text from PDF
+        # 3. Extract FULL text from PDF (no truncation)
         raw_text = extract_text_from_pdf(file_bytes)
         
-        # 4. Extract Heuristics
-        lab_values = extract_lab_values(raw_text)
+        # 4. Send ENTIRE text to AI for comprehensive analysis
+        from ai_engine import analyze_blood_report
+        ai_summary = analyze_blood_report(raw_text)
         
-        # 5. Get AI Summary
-        # Note: If no meaningful heuristics were found but there is text, 
-        # OpenAI might still figure it out from the raw_text.
-        # But we will pass the structured extracted dictionary combined with raw_text context safely.
-        summary_payload = (
-            f"Extracted Heuristics: {lab_values}\n"
-            f"--- RAW TEXT ---\n{raw_text[:2500]}" # cap length for speed/cost if huge
-        )
-        ai_summary = analyze_lab_values(summary_payload)
-        
-        # 6. Build Observations based on heuristics
+        # 5. Build FHIR Observations from AI-extracted values
         observations = []
-        if lab_values.get("hemoglobin") is not None:
-            observations.append(build_fhir_observation(uid, "718-7", "Hemoglobin", lab_values["hemoglobin"], "g/dL", "g/dL"))
-        if lab_values.get("vitaminD") is not None:
-            observations.append(build_fhir_observation(uid, "62292-8", "25-hydroxyvitamin D", lab_values["vitaminD"], "ng/mL", "ng/mL"))
-        if lab_values.get("glucose") is not None:
-            observations.append(build_fhir_observation(uid, "2345-7", "Glucose", lab_values["glucose"], "mg/dL", "mg/dL"))
+        for val in ai_summary.get("all_values", []):
+            try:
+                numeric_val = float(''.join(c for c in str(val.get("value", "0")) if c.isdigit() or c == '.'))
+                obs = build_fhir_observation(uid, "lab-value", val.get("test", "Unknown"), numeric_val, val.get("unit", ""), val.get("unit", ""))
+                observations.append(obs)
+            except (ValueError, TypeError):
+                pass
             
         obs_ids = [obs["id"] for obs in observations]
         
-        # 7. Convert AI JSON summary to FHIR Note annotation
-        # The AI returns { "risk_level": "...", "clinical_summary": "...", "lifestyle_recommendations": [...] }
-        note_text = (
-            f"AI Risk Level: {ai_summary.get('risk_level', 'Unknown')}\n\n"
-            f"Clinical Summary: {ai_summary.get('clinical_summary', 'N/A')}\n\n"
-            f"Recommendations:\n- " + "\n- ".join(ai_summary.get('lifestyle_recommendations', []))
-        )
+        # 6. Build rich FHIR Note from comprehensive AI response
+        note_parts = [f"AI Risk Level: {ai_summary.get('risk_level', 'Unknown')}"]
+        note_parts.append(f"\nClinical Summary: {ai_summary.get('clinical_summary', 'N/A')}")
+        
+        abnormals = ai_summary.get("abnormal_values", [])
+        if abnormals:
+            note_parts.append("\nAbnormal Values:")
+            for ab in abnormals:
+                note_parts.append(f"  • {ab.get('test', '?')}: {ab.get('value', '?')} (Ref: {ab.get('reference_range', '?')}) — {ab.get('status', '?')} — {ab.get('significance', '')}")
+        
+        meds = ai_summary.get("medication_suggestions", "")
+        if meds and meds != "None required.":
+            note_parts.append(f"\nMedication Suggestions: {meds}")
+        
+        recs = ai_summary.get("lifestyle_recommendations", [])
+        if recs:
+            note_parts.append("\nRecommendations:")
+            for r in recs:
+                note_parts.append(f"  - {r}")
+        
+        followups = ai_summary.get("follow_up_tests", [])
+        if followups:
+            note_parts.append("\nSuggested Follow-Up Tests:")
+            for f in followups:
+                note_parts.append(f"  - {f}")
+        
+        note_text = "\n".join(note_parts)
         
         diagnostic_report = build_fhir_diagnostic_report(uid, obs_ids)
-        # Inject the presentation document URL and the AI note
         diagnostic_report["presentedForm"] = [{"url": pdf_url, "title": file.filename}]
         diagnostic_report["note"] = [{"text": note_text}]
         
-        # 8. Store EVERYTHING in Firestore
+        # 7. Store in Firestore
         db = firestore.client()
         report_ref = db.collection("fhir_reports").document(uid).collection("reports").document(diagnostic_report["id"])
         
@@ -433,28 +443,16 @@ async def upload_blood_report(uid: str = Form(...), file: UploadFile = File(...)
             obs_ref = db.collection("fhir_reports").document(uid).collection("observations").document(obs["id"])
             batch.set(obs_ref, obs)
             
-        # 9. Create High Risk Alert if applicable
+        # 8. Create High Risk Alert if applicable
         if ai_summary.get("risk_level") == "High":
             alert_id = str(uuid.uuid4())
             alert_ref = db.collection("alerts").document(alert_id)
-            
-            # Find assigned doctor if any, otherwise leave blank
-            try:
-                # Firestore group query or specific query to find if this patient is assigned
-                # For simplicity, we search doctor_assignments/{doc_uid}/patients/{patient_uid}
-                # Since we don't know the doc_uid immediately, we query across all doctors:
-                assignments = db.collection_group("patients").where("__name__", "==", patient_uid).get()
-                assigned_doctor = assignments[0].reference.parent.parent.id if assignments else ""
-            except Exception:
-                assigned_doctor = ""
-
             batch.set(alert_ref, {
                 "patient_uid": uid,
                 "report_id": diagnostic_report["id"],
                 "risk_level": "High",
                 "status": "unresolved",
                 "created_at": firestore.SERVER_TIMESTAMP,
-                "assigned_doctor": assigned_doctor
             })
             
         batch.commit()
@@ -462,7 +460,6 @@ async def upload_blood_report(uid: str = Form(...), file: UploadFile = File(...)
         return {
             "message": "Blood Report uploaded and analyzed successfully.",
             "pdf_url": pdf_url,
-            "extracted_labs": lab_values,
             "ai_analysis": ai_summary,
             "fhir_report": diagnostic_report
         }
