@@ -6,6 +6,9 @@ import PatientDashboard from './pages/PatientDashboard';
 import { DoctorDashboard, HospitalDashboard } from './pages/Dashboards';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import ThemeToggle from './components/ThemeToggle';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
+import { TermsOfService } from './pages/TermsOfService';
+import { LandingPage } from './pages/LandingPage';
 
 function App() {
   return (
@@ -14,6 +17,10 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+
+        {/* Public Legal Routes */}
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms-of-service" element={<TermsOfService />} />
 
         {/* Protected Routes */}
         <Route path="/dashboard/patient" element={
@@ -40,8 +47,11 @@ function App() {
           </ProtectedRoute>
         } />
 
-        {/* Default route */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        {/* Public Landing Page */}
+        <Route path="/" element={<LandingPage />} />
+
+        {/* Default route fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
