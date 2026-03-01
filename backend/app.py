@@ -131,7 +131,7 @@ def register_user(req: RegisterRequest):
     if not req.email or not req.password or not req.role:
         raise HTTPException(status_code=400, detail="Missing essential fields: email, password, or role.")
     
-    if req.role not in ["patient", "doctor", "hospital"]:
+    if req.role not in ["patient", "doctor", "hospital", "superadmin"]:
         raise HTTPException(status_code=400, detail="Invalid role provided.")
         
     try:
