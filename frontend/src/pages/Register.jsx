@@ -32,7 +32,22 @@ const Register = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+
+            // Auto-calculate BMI
+            if (name === 'height' || name === 'weight') {
+                const h = parseFloat(newData.height);
+                const w = parseFloat(newData.weight);
+                if (h > 0 && w > 0) {
+                    const heightInM = h / 100;
+                    newData.bmi = (w / (heightInM * heightInM)).toFixed(1);
+                } else {
+                    newData.bmi = '';
+                }
+            }
+            return newData;
+        });
     };
 
     const handleRegister = async (e) => {
@@ -114,11 +129,6 @@ const Register = () => {
                     {formData.role === 'patient' && (
                         <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '10px', marginBottom: '1rem' }}>
                             <h4 style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#94a3b8' }}>Patient Medical Information</h4>
-                            <div className="form-group">
-                                <label className="form-label">Health ID</label>
-                                <input type="text" className="form-input" name="healthId" value={formData.healthId} onChange={handleChange} />
-                            </div>
-
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <div className="form-group" style={{ flex: 1 }}>
                                     <label className="form-label">Height (cm)</label>
@@ -130,7 +140,7 @@ const Register = () => {
                                 </div>
                                 <div className="form-group" style={{ flex: 1 }}>
                                     <label className="form-label">BMI</label>
-                                    <input type="number" step="0.1" className="form-input" name="bmi" value={formData.bmi} onChange={handleChange} />
+                                    <input type="number" step="0.1" className="form-input" name="bmi" value={formData.bmi} readOnly style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', cursor: 'not-allowed' }} />
                                 </div>
                             </div>
                         </div>
