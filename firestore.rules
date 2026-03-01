@@ -52,6 +52,9 @@ service cloud.firestore {
     match /consents/{document=**} {
       allow read, write: if false;
     }
+    match /fhir_prescriptions/{document=**} {
+      allow read, write: if false;
+    }
 
     // ─── 5. Default Deny ────────────────────────────────────
     // Everything not explicitly matched above is denied.

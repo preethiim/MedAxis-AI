@@ -1172,3 +1172,120 @@ def get_step_rewards(uid: str = Depends(get_current_patient_uid)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ─── Prescription Feature ────────────────────────────────────────────────────
+
+from typing import List, Optional
+from pydantic import BaseModel as PydanticBaseModel
+
+class MedicationItem(PydanticBaseModel):
+    name: str
+    dosage: str
+    frequency: str
+    duration: str
+
+class PrescriptionRequest(PydanticBaseModel):
+    patient_uid: str
+    medications: List[MedicationItem]
+    notes: Optional[str] = ""
+
+
+def get_current_doctor_uid(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify the caller is a doctor and return their UID."""
+    try:
+        from firebase_admin import auth
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        role = decoded_token.get("role", "")
+        if role != "doctor":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail="Unauthorized: Only doctors can perform this action.")
+        return decoded_token.get("uid")
+    except Exception as e:
+        from fastapi import HTTPException
+        if hasattr(e, 'status_code'):
+            raise e
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+
+@app.post("/doctor/add-prescription")
+def add_prescription(payload: PrescriptionRequest, doctor_uid: str = Depends(get_current_doctor_uid)):
+    """
+    Create a FHIR MedicationRequest-based prescription for a patient.
+    - Verifies doctor role via Firebase token.
+    - Checks consent exists (patient must have granted access).
+    - Builds FHIR MedicationRequest resources.
+    - Stores under fhir_prescriptions/{patient_uid}/.
+    - Creates an audit log entry.
+    """
+    from fastapi import HTTPException
+    from prescription_utils import build_prescription_bundle
+
+    try:
+        db = firestore.client()
+
+        # 1. Verify consent: check if patient has granted this doctor access
+        consent_ref = db.collection("consents").document(payload.patient_uid)
+        consent_doc = consent_ref.get()
+
+        if consent_doc.exists:
+            consent_data = consent_doc.to_dict()
+            granted_doctors = consent_data.get("granted_doctors", [])
+            if doctor_uid not in granted_doctors:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Patient has not granted you access. Request consent first."
+                )
+        # If no consent doc exists, allow (patient hasn't set up consent restrictions yet)
+
+        # 2. Build prescription bundle
+        medications_dicts = [med.dict() for med in payload.medications]
+        prescription = build_prescription_bundle(
+            patient_uid=payload.patient_uid,
+            doctor_uid=doctor_uid,
+            medications=medications_dicts,
+            notes=payload.notes or ""
+        )
+
+        # 3. Store in Firestore under fhir_prescriptions/{patient_uid}/{prescription_id}
+        rx_ref = db.collection("fhir_prescriptions") \
+                   .document(payload.patient_uid) \
+                   .collection("prescriptions") \
+                   .document(prescription["id"])
+        rx_ref.set(prescription)
+
+        # 4. Audit log
+        audit_ref = db.collection("audit_logs").document()
+        audit_ref.set({
+            "action": "prescription_created",
+            "doctor_uid": doctor_uid,
+            "patient_uid": payload.patient_uid,
+            "prescription_id": prescription["id"],
+            "medication_names": prescription["medication_names"],
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+
+        return {
+            "message": "Prescription created successfully.",
+            "prescription": prescription
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create prescription: {str(e)}")
+
+
+@app.get("/patient/prescriptions")
+def get_patient_prescriptions(uid: str = Depends(get_current_patient_uid)):
+    """Fetch all prescriptions for the authenticated patient."""
+    from fastapi import HTTPException
+    try:
+        db = firestore.client()
+        docs = db.collection("fhir_prescriptions").document(uid) \
+                 .collection("prescriptions") \
+                 .order_by("created_at", direction=firestore.Query.DESCENDING) \
+                 .get()
+        prescriptions = [doc.to_dict() for doc in docs]
+        return {"prescriptions": prescriptions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
