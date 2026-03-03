@@ -53,8 +53,14 @@ const Login = () => {
         setError('');
         setIsSubmitting(true);
         const provider = new GoogleAuthProvider();
+        provider.addScope('https://www.googleapis.com/auth/fitness.activity.read');
         try {
-            await signInWithPopup(auth, provider);
+            const result = await signInWithPopup(auth, provider);
+            // Capture Google Access Token to query Google REST APIs later
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            if (credential && credential.accessToken) {
+                localStorage.setItem('googleAccessToken', credential.accessToken);
+            }
         } catch (err) {
             setError(err.message);
             setIsSubmitting(false);

@@ -200,7 +200,10 @@ export const DoctorDashboard = () => {
                                         return (
                                             <div key={i} className="report-card" style={{ marginBottom: '0.75rem' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Report: {r.id}</span>
+                                                    <div>
+                                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Report: {r.id}</span>
+                                                        {r.issued && <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginLeft: '1rem' }}>📅 {new Date(r.issued).toLocaleString()}</span>}
+                                                    </div>
                                                     {r.presentedForm?.[0]?.url && <a href={r.presentedForm[0].url} target="_blank" rel="noreferrer" className="link" style={{ fontSize: '0.8rem' }}>View PDF →</a>}
                                                 </div>
                                                 {aiText && <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', whiteSpace: 'pre-wrap', lineHeight: 1.6, borderLeft: '3px solid var(--success)', paddingLeft: '0.75rem', margin: '0.5rem 0' }}>{aiText}</p>}
@@ -260,7 +263,10 @@ export const DoctorDashboard = () => {
                             {reports.map(report => (
                                 <div key={report.id} className="glass-panel">
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                        <h4 style={{ fontSize: '1rem' }}>Report: {report.id}</h4>
+                                        <div>
+                                            <h4 style={{ fontSize: '1rem', display: 'inline-block' }}>Report: {report.id}</h4>
+                                            {report.issued && <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginLeft: '1rem' }}>📅 {new Date(report.issued).toLocaleString()}</span>}
+                                        </div>
                                         <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Patient: {report.patient_uid?.substring(0, 8)}...</span>
                                     </div>
 

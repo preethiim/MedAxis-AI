@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Upload, Footprints } from 'lucide-react';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { auth } from '../firebase/firebaseConfig';
+import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Upload, Footprints, RefreshCw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const FASTAPI_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -12,11 +14,11 @@ const PatientDashboard = () => {
     const [profile, setProfile] = useState({ firstName: '', lastName: '', gender: '', birthDate: '' });
     const [vitals, setVitals] = useState({ height_cm: '', weight_kg: '' });
     const [labs, setLabs] = useState({ hemoglobin: '', vitaminD: '', glucose: '' });
-    const [pdfFile, setPdfFile] = useState(null);
+    const [reportFile, setReportFile] = useState(null);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [results, setResults] = useState({ profile: null, vitals: null, labs: null, pdfAnalysis: null });
+    const [results, setResults] = useState({ profile: null, vitals: null, labs: null, reportAnalysis: null });
 
     const [fetchedReports, setFetchedReports] = useState([]);
     const [fetchingReports, setFetchingReports] = useState(false);
@@ -27,6 +29,8 @@ const PatientDashboard = () => {
     const [stepRewards, setStepRewards] = useState({ daily_steps: {}, total_points: 0 });
     const [stepLoading, setStepLoading] = useState(false);
     const [stepMsg, setStepMsg] = useState(null);
+    const [syncLoading, setSyncLoading] = useState(false);
+    const [healthId, setHealthId] = useState('');
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -60,6 +64,20 @@ const PatientDashboard = () => {
             finally { setFetchingReports(false); setFetchingTrends(false); }
         };
         fetchDashboardData();
+
+        // Fetch patient's own profile (to get healthId)
+        const fetchProfile = async () => {
+            if (!currentUser) return;
+            try {
+                const token = await currentUser.getIdToken();
+                const res = await fetch(`${FASTAPI_URL}/patient/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    setHealthId(data.healthId || '');
+                }
+            } catch (err) { console.error('Failed to fetch patient profile:', err); }
+        };
+        fetchProfile();
     }, [currentUser]);
 
     const handleLogout = async () => { try { await logout(); } catch (e) { console.error(e); } };
@@ -95,18 +113,74 @@ const PatientDashboard = () => {
         } catch (err) { setError(err.message); } finally { setLoading(false); }
     };
 
-    const uploadPdf = async (e) => {
+    const handleGoogleFitSync = async () => {
+        setSyncLoading(true);
+        setStepMsg(null);
+        try {
+            let googleAccessToken = localStorage.getItem('googleAccessToken');
+
+            if (!googleAccessToken) {
+                // If not available, prompt the user to sign in with Google to grant the scope
+                const provider = new GoogleAuthProvider();
+                provider.addScope('https://www.googleapis.com/auth/fitness.activity.read');
+                const result = await signInWithPopup(auth, provider);
+                const credential = GoogleAuthProvider.credentialFromResult(result);
+                if (credential && credential.accessToken) {
+                    googleAccessToken = credential.accessToken;
+                    localStorage.setItem('googleAccessToken', googleAccessToken);
+                } else {
+                    throw new Error('Failed to retrieve Google Access Token.');
+                }
+            }
+
+            const token = await currentUser.getIdToken();
+            const res = await fetch(`${FASTAPI_URL}/patient/sync-steps`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ google_access_token: googleAccessToken })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                if (res.status === 401 && data.detail && data.detail.includes('Google Access Token expired')) {
+                    // Clear the token so next click triggers a re-auth
+                    localStorage.removeItem('googleAccessToken');
+                    throw new Error('Google Auth Expired. Please click sync again to re-authenticate.');
+                }
+                throw new Error(data.detail || 'Google Fit sync failed');
+            }
+
+            setStepMsg({ type: 'success', text: `Successfully synced ${data.steps_synced} steps from Google Fit! Total Points: ${data.total_points}` });
+            setStepRewards(prev => ({
+                ...prev,
+                total_points: data.total_points,
+                daily_steps: {
+                    ...prev.daily_steps,
+                    [new Date().toISOString().split('T')[0]]: data.steps_synced
+                }
+            }));
+        } catch (err) {
+            setStepMsg({ type: 'error', text: err.message });
+        } finally {
+            setSyncLoading(false);
+        }
+    };
+
+    const uploadReport = async (e) => {
         e.preventDefault();
-        if (!pdfFile) return;
+        if (!reportFile) return;
         setLoading(true); setError(null);
         const formData = new FormData();
         formData.append("uid", currentUser.uid);
-        formData.append("file", pdfFile);
+        formData.append("file", reportFile);
         try {
             const res = await fetch(`${FASTAPI_URL}/upload/blood-report`, { method: 'POST', body: formData });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Failed to upload PDF');
-            setResults(p => ({ ...p, pdfAnalysis: data }));
+            if (!res.ok) throw new Error(data.detail || 'Failed to upload report');
+            setResults(p => ({ ...p, reportAnalysis: data }));
             // Auto-switch to My Reports and refresh
             const token = await currentUser.getIdToken();
             const reportsRes = await fetch(`${FASTAPI_URL}/patient/reports`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -137,6 +211,13 @@ const PatientDashboard = () => {
                     <div>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Patient Portal</h2>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
+                        {healthId && (
+                            <div style={{ marginTop: '0.2rem' }}>
+                                <span style={{ fontSize: '0.75rem', background: 'rgba(96,165,250,0.15)', color: '#60a5fa', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace', letterSpacing: '0.03em' }}>
+                                    🪪 {healthId}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
                 <button onClick={handleLogout} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -193,7 +274,7 @@ const PatientDashboard = () => {
                                 <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
                                     <Activity size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
                                     <p>No diagnostic reports found.</p>
-                                    <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Upload a PDF in the "Upload" tab to get your first AI analysis.</p>
+                                    <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Upload a PDF or Image in the "Upload" tab to get your first AI analysis.</p>
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -217,6 +298,7 @@ const PatientDashboard = () => {
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                                                     <div>
                                                         <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>ID: {report.id}</span>
+                                                        {report.issued && <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginLeft: '1rem' }}>📅 {new Date(report.issued).toLocaleString()}</span>}
                                                         <h4 style={{ margin: '0.25rem 0 0', fontSize: '1rem' }}>Blood Work Analysis</h4>
                                                     </div>
                                                     <span className={`badge ${badgeClass}`}>Risk: {riskLevel}</span>
@@ -231,7 +313,7 @@ const PatientDashboard = () => {
                                                     </div>
                                                 )}
 
-                                                {pdfUrl && <a href={pdfUrl} target="_blank" rel="noreferrer" className="link" style={{ fontSize: '0.85rem' }}>→ View Original PDF</a>}
+                                                {pdfUrl && <a href={pdfUrl} target="_blank" rel="noreferrer" className="link" style={{ fontSize: '0.85rem' }}>→ View Original Document</a>}
 
                                                 {doctorComments.length > 0 && (
                                                     <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
@@ -257,20 +339,20 @@ const PatientDashboard = () => {
                         <div>
                             <h3 style={{ fontSize: '1.15rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Upload size={20} /> Upload Blood Report</h3>
                             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-                                Upload a blood work PDF. Our AI will extract key metrics, analyze risk levels, and provide clinical recommendations.
+                                Upload a blood work PDF or Image. Our AI will extract key metrics, analyze risk levels, and provide clinical recommendations.
                             </p>
-                            <form onSubmit={uploadPdf}>
+                            <form onSubmit={uploadReport}>
                                 <div style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '2rem', textAlign: 'center', marginBottom: '1rem', background: 'var(--input-bg)', transition: 'var(--transition)' }}>
                                     <Upload size={32} style={{ color: 'var(--text-dim)', marginBottom: '0.75rem' }} />
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>{pdfFile ? `📄 ${pdfFile.name}` : 'Drag & drop or click to select a PDF'}</p>
-                                    <input type="file" accept=".pdf" onChange={e => setPdfFile(e.target.files[0])} style={{ opacity: 0, position: 'absolute', width: 0 }} id="pdf-upload" />
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>{reportFile ? `📄 ${reportFile.name}` : 'Drag & drop or click to select a PDF or Image'}</p>
+                                    <input type="file" accept="application/pdf, image/png, image/jpeg, .pdf, .png, .jpg, .jpeg" onChange={e => setReportFile(e.target.files[0])} style={{ opacity: 0, position: 'absolute', width: 0 }} id="pdf-upload" />
                                     <label htmlFor="pdf-upload" className="btn-outline" style={{ cursor: 'pointer', display: 'inline-block' }}>Choose File</label>
                                 </div>
-                                <button type="submit" className="btn-primary" disabled={loading || !pdfFile} style={{ width: '100%' }}>
+                                <button type="submit" className="btn-primary" disabled={loading || !reportFile} style={{ width: '100%' }}>
                                     {loading ? '⏳ Analyzing with AI...' : '🚀 Upload & Analyze'}
                                 </button>
                             </form>
-                            {results.pdfAnalysis && (
+                            {results.reportAnalysis && (
                                 <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16,185,129,0.2)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--success)', fontWeight: 600, marginBottom: '0.5rem' }}><CheckCircle size={16} /> Analysis Complete!</div>
                                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Your report has been analyzed. Switch to "Reports" to see the detailed AI summary.</p>
@@ -287,6 +369,19 @@ const PatientDashboard = () => {
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Reward Points</div>
                                 <div style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--warning)' }}>{stepRewards.total_points || 0}</div>
                             </div>
+
+                            <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'center' }}>
+                                <button
+                                    onClick={handleGoogleFitSync}
+                                    disabled={syncLoading}
+                                    className="btn-outline"
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', justifyContent: 'center', borderColor: '#4285F4', color: '#4285F4' }}
+                                >
+                                    {syncLoading ? <span className="loader"></span> : <RefreshCw size={18} />}
+                                    {syncLoading ? "Syncing with Google Fit..." : "Sync Daily Steps with Google Fit"}
+                                </button>
+                            </div>
+
                             <div className="search-bar" style={{ marginBottom: '1rem' }}>
                                 <input type="number" className="form-input" placeholder="Enter today's steps" value={stepInput} onChange={e => setStepInput(e.target.value)} style={{ margin: 0, flex: 1 }} />
                                 <button className="btn-primary" style={{ margin: 0, width: 'auto' }} disabled={stepLoading || !stepInput}

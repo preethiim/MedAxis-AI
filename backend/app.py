@@ -357,7 +357,7 @@ def create_diagnostic_report(report_req: DiagnosticReportRequest):
 
 from fastapi import UploadFile, File, Form
 from firebase_admin import storage
-from pdf_parser import extract_text_from_pdf
+from pdf_parser import extract_text_from_file
 from report_builder import extract_lab_values
 from ai_engine import analyze_lab_values
 
@@ -382,8 +382,9 @@ async def upload_blood_report(uid: str = Form(...), file: UploadFile = File(...)
         blob.make_public()
         pdf_url = blob.public_url
         
-        # 3. Extract FULL text from PDF (no truncation)
-        raw_text = extract_text_from_pdf(file_bytes)
+        # 3. Extract FULL text from file (no truncation)
+        print(f"DEBUG: Received file for extraction. Filename: '{file.filename}', Content-Type: '{file.content_type}'")
+        raw_text = extract_text_from_file(file_bytes, file.filename)
         
         # 4. Send ENTIRE text to AI for comprehensive analysis
         from ai_engine import analyze_blood_report
@@ -1164,6 +1165,101 @@ def log_steps(req: StepLogRequest, uid: str = Depends(get_current_patient_uid)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class SyncStepsRequest(BaseModel):
+    google_access_token: str
+
+@app.post("/patient/sync-steps")
+def sync_steps(req: SyncStepsRequest, uid: str = Depends(get_current_patient_uid)):
+    """Sync daily steps directly from Google Fit REST API and calculate reward points."""
+    import requests
+    from fastapi import HTTPException
+    from datetime import datetime, time
+    import pytz
+    
+    try:
+        # Determine milliseconds since epoch for start and end of the current day (UTC)
+        now = datetime.utcnow()
+        start_of_day = datetime(now.year, now.month, now.day, 0, 0, 0)
+        start_millis = int(start_of_day.timestamp() * 1000)
+        end_millis = int(now.timestamp() * 1000)
+
+        # Call Google Fitness REST API
+        fit_url = "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate"
+        headers = {
+            "Authorization": f"Bearer {req.google_access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "aggregateBy": [{
+                "dataTypeName": "com.google.step_count.delta"
+            }],
+            "bucketByTime": { "durationMillis": 86400000 },
+            "startTimeMillis": start_millis,
+            "endTimeMillis": end_millis
+        }
+        
+        resp = requests.post(fit_url, headers=headers, json=payload)
+        
+        if resp.status_code == 401:
+             raise HTTPException(status_code=401, detail="Google Access Token expired or invalid")
+        elif resp.status_code != 200:
+             raise HTTPException(status_code=resp.status_code, detail=f"Google Fit Error: {resp.text}")
+             
+        fit_data = resp.json()
+        total_steps = 0
+        
+        # Parse points data recursively
+        for bucket in fit_data.get("bucket", []):
+            for dataset in bucket.get("dataset", []):
+                for point in dataset.get("point", []):
+                    for val in point.get("value", []):
+                        total_steps += val.get("intVal", 0)
+        
+        # Now update Firestore logic
+        db = firestore.client()
+        today_str = now.strftime("%Y-%m-%d")
+
+        ref = db.collection("step_rewards").document(uid)
+        doc = ref.get()
+
+        if doc.exists:
+            data = doc.to_dict()
+        else:
+            data = {"daily_steps": {}, "total_points": 0, "rewards_claimed": []}
+
+        # Instead of adding, checking tier mapping
+        points_earned = 0
+        for threshold, pts in REWARD_TIERS:
+            if total_steps >= threshold:
+                points_earned = pts
+                break
+
+        # Calculate difference to update total accurately if they synced/logged manually before
+        previous_steps = data["daily_steps"].get(today_str, 0)
+        previous_points_earned = 0
+        for threshold, pts in REWARD_TIERS:
+            if previous_steps >= threshold:
+                previous_points_earned = pts
+                break
+                
+        # Adjust total
+        data["total_points"] = data.get("total_points", 0) - previous_points_earned + points_earned
+        data["daily_steps"][today_str] = total_steps
+        
+        ref.set(data)
+
+        return {
+            "message": f"Synced {total_steps} steps from Google Fit for {today_str}",
+            "points_earned": points_earned,
+            "total_points": data["total_points"],
+            "steps_synced": total_steps
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/patient/step-rewards")
 def get_step_rewards(uid: str = Depends(get_current_patient_uid)):
@@ -1298,3 +1394,145 @@ def get_patient_prescriptions(uid: str = Depends(get_current_patient_uid)):
         return {"prescriptions": prescriptions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Patient Self-Profile ────────────────────────────────────────────────────
+
+@app.get("/patient/me")
+def get_patient_me(uid: str = Depends(get_current_patient_uid)):
+    """Returns the authenticated patient's own Firestore profile (includes healthId)."""
+    from fastapi import HTTPException
+    try:
+        db = firestore.client()
+        doc = db.collection("users").document(uid).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Patient profile not found.")
+        data = doc.to_dict()
+        return {
+            "uid": uid,
+            "name": data.get("name", ""),
+            "email": data.get("email", ""),
+            "healthId": data.get("healthId", ""),
+            "height": data.get("height", ""),
+            "weight": data.get("weight", ""),
+            "bmi": data.get("bmi", ""),
+            "role": data.get("role", "patient"),
+        }
+    except Exception as e:
+        from fastapi import HTTPException as _HTTPException
+        if hasattr(e, 'status_code'):
+            raise e
+        raise _HTTPException(status_code=500, detail=str(e))
+
+
+# ─── SuperAdmin: Create & Delete Users ───────────────────────────────────────
+
+class SuperAdminCreateUserRequest(BaseModel):
+    name: str = ""
+    email: str
+    password: str
+    role: str  # "patient" | "doctor" | "hospital"
+
+
+@app.post("/superadmin/create-user")
+def superadmin_create_user(req: SuperAdminCreateUserRequest, admin_uid: str = Depends(get_current_superadmin_uid)):
+    """
+    SuperAdmin creates a new patient, doctor, or hospital account.
+    Replicates the /auth/register logic with superadmin privilege enforcement.
+    """
+    from fastapi import HTTPException
+    if req.role not in ["patient", "doctor", "hospital"]:
+        raise HTTPException(status_code=400, detail="Role must be 'patient', 'doctor', or 'hospital'.")
+    try:
+        from firebase_admin import auth as fb_auth
+        user_record = fb_auth.create_user(
+            email=req.email,
+            password=req.password,
+            display_name=req.name
+        )
+        fb_auth.set_custom_user_claims(user_record.uid, {"role": req.role})
+
+        db = firestore.client()
+        user_data = {
+            "uid": user_record.uid,
+            "role": req.role,
+            "email": req.email,
+            "name": req.name,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "createdBy": admin_uid,
+        }
+
+        if req.role == "patient":
+            generated_health_id = "PAT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            user_data["healthId"] = generated_health_id
+            user_data["height"] = ""
+            user_data["weight"] = ""
+            user_data["bmi"] = ""
+        elif req.role == "doctor":
+            user_data["doctorId"] = "DOC-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        elif req.role == "hospital":
+            user_data["employeeId"] = "HSP-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+        db.collection("users").document(user_record.uid).set(user_data)
+
+        # Audit log
+        db.collection("audit_logs").document().set({
+            "action": "SUPERADMIN_CREATE_USER",
+            "admin_uid": admin_uid,
+            "created_uid": user_record.uid,
+            "role": req.role,
+            "email": req.email,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+        })
+
+        return {"success": True, "uid": user_record.uid, "user": user_data}
+
+    except Exception as e:
+        error_msg = str(e)
+        if "EMAIL_EXISTS" in error_msg or "email-already-exists" in error_msg:
+            raise HTTPException(status_code=400, detail="The email address is already in use.")
+        raise HTTPException(status_code=500, detail=f"Failed to create user: {error_msg}")
+
+
+@app.delete("/superadmin/delete-user/{target_uid}")
+def superadmin_delete_user(target_uid: str, admin_uid: str = Depends(get_current_superadmin_uid)):
+    """
+    SuperAdmin permanently deletes a user from Firebase Auth and Firestore.
+    Refuses to delete other superadmins.
+    """
+    from fastapi import HTTPException
+    from firebase_admin import auth as fb_auth
+    try:
+        # Prevent deleting another superadmin
+        try:
+            target_record = fb_auth.get_user(target_uid)
+            target_claims = target_record.custom_claims or {}
+            if target_claims.get("role") == "superadmin":
+                raise HTTPException(status_code=403, detail="Cannot delete a super admin account.")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=404, detail="User not found.")
+
+        db = firestore.client()
+
+        # Delete from Firebase Auth
+        fb_auth.delete_user(target_uid)
+
+        # Delete Firestore user document
+        db.collection("users").document(target_uid).delete()
+
+        # Audit log
+        db.collection("audit_logs").document().set({
+            "action": "SUPERADMIN_DELETE_USER",
+            "admin_uid": admin_uid,
+            "deleted_uid": target_uid,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+        })
+
+        return {"success": True, "message": f"User {target_uid} deleted successfully."}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")

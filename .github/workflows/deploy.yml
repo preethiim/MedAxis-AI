@@ -1,0 +1,57 @@
+name: Deploy — Backend (Cloud Run) + Frontend (Vercel)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  # ─────────────────────────────────────────────
+  # JOB 1: Push code to GitHub (handled by git push itself, this just documents trigger)
+  # ─────────────────────────────────────────────
+
+  deploy-backend:
+    name: Deploy Backend → Cloud Run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: medaxis-ai
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy medaxis-backend \
+            --source ./backend \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+            --quiet
+
+  deploy-frontend:
+    name: Deploy Frontend → Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Deploy to Vercel (Production)
+        run: |
+          vercel --prod --yes \
+            --token "${{ secrets.VERCEL_TOKEN }}"
+        working-directory: frontend
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

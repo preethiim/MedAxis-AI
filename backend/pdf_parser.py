@@ -1,5 +1,41 @@
 import io
+import os
 from PyPDF2 import PdfReader
+
+def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
+    """
+    Routes file extraction based on the file extension.
+    If the file is a PDF, uses PyPDF2 (and OCR fallback).
+    If the file is an image, uses Tesseract directly.
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in ['.png', '.jpg', '.jpeg']:
+        return extract_text_from_image(file_bytes)
+    elif ext == '.pdf':
+        return extract_text_from_pdf(file_bytes)
+    else:
+        raise ValueError(f"Unsupported file type: {ext}")
+
+def extract_text_from_image(file_bytes: bytes) -> str:
+    """
+    Extracts text from an image directly using Tesseract OCR.
+    """
+    try:
+        from PIL import Image
+        import pytesseract
+        
+        image = Image.open(io.BytesIO(file_bytes))
+        # Ensure it's in a format Tesseract likes, such as RGB
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+            
+        ocr_text = pytesseract.image_to_string(image)
+        return ocr_text
+    except Exception as e:
+        print(f"Image OCR Extraction failed: {e}")
+        return "Image OCR Extraction failed."
+
+
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """
