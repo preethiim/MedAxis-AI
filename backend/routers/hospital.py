@@ -100,55 +100,186 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
 
 @router.get("/hospital/doctors")
 def get_hospital_doctors(uid: str = Depends(get_current_hospital_uid)):
-    """Returns a list of all users with the 'doctor' role, including patient assignment counts."""
+    """
+    Returns only the doctors affiliated with THIS hospital
+    (matched by hospitalId stored on each doctor's Firestore doc).
+    Includes per-doctor active patient assignment count.
+    """
     try:
         db = firestore.client()
-        docs = db.collection("users").where("role", "==", "doctor").stream()
+
+        # Resolve this hospital's own hospitalId
+        hosp_doc = db.collection("users").document(uid).get()
+        hosp_data = hosp_doc.to_dict() if hosp_doc.exists else {}
+        hospital_id = hosp_data.get("hospitalId", "")
+        if not hospital_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Hospital account setup is incomplete (missing hospitalId)."
+            )
+
+        # Only fetch doctors whose hospitalId matches
+        docs = (
+            db.collection("users")
+            .where("role", "==", "doctor")
+            .where("hospitalId", "==", hospital_id)
+            .stream()
+        )
         doctors = []
         for doc in docs:
             doc_data = doc.to_dict()
-            assignments = db.collection("doctor_assignments").document(doc.id).collection("patients").get()
+            # Count only active assignments
+            assignments = (
+                db.collection("doctor_assignments")
+                .document(doc.id)
+                .collection("patients")
+                .where("status", "==", "active")
+                .get()
+            )
             doctors.append({
                 "uid": doc.id,
                 "email": doc_data.get("email", ""),
                 "name": doc_data.get("name", ""),
+                "doctorId": doc_data.get("doctorId", ""),
+                "employeeId": doc_data.get("employeeId", ""),
                 "patient_count": len(assignments),
             })
-        return {"doctors": doctors}
+        return {"doctors": doctors, "total": len(doctors)}
     except Exception as e:
+        if hasattr(e, 'status_code'):
+            raise e
         raise HTTPException(status_code=500, detail=f"Failed to fetch doctors: {str(e)}")
 
 
 @router.get("/hospital/patients")
 def get_hospital_patients(uid: str = Depends(get_current_hospital_uid)):
-    """Returns a list of all users with the 'patient' role."""
+    """
+    Returns the set of patients that are actively assigned to THIS hospital's doctors.
+    Does NOT expose patient reports, clinical records, or consent data.
+    """
     try:
         db = firestore.client()
-        docs = db.collection("users").where("role", "==", "patient").stream()
-        patients = [{"uid": d.id, "email": d.to_dict().get("email", ""), "name": d.to_dict().get("name", "")} for d in docs]
-        return {"patients": patients}
+
+        # Resolve hospitalId
+        hosp_doc = db.collection("users").document(uid).get()
+        hosp_data = hosp_doc.to_dict() if hosp_doc.exists else {}
+        hospital_id = hosp_data.get("hospitalId", "")
+        if not hospital_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Hospital account setup is incomplete (missing hospitalId)."
+            )
+
+        # Get UIDs of all doctors affiliated with this hospital
+        doctor_docs = (
+            db.collection("users")
+            .where("role", "==", "doctor")
+            .where("hospitalId", "==", hospital_id)
+            .stream()
+        )
+        doctor_uids = [d.id for d in doctor_docs]
+
+        # Gather unique patient UIDs across all doctors' assignment lists
+        patient_uid_set: set = set()
+        for doc_uid in doctor_uids:
+            assignments = (
+                db.collection("doctor_assignments")
+                .document(doc_uid)
+                .collection("patients")
+                .where("status", "==", "active")
+                .stream()
+            )
+            for a in assignments:
+                patient_uid_set.add(a.id)
+
+        # Fetch minimal patient profile data (NO clinical records)
+        patients = []
+        for p_uid in patient_uid_set:
+            p_doc = db.collection("users").document(p_uid).get()
+            if p_doc.exists:
+                p_data = p_doc.to_dict()
+                patients.append({
+                    "uid": p_uid,
+                    "name": p_data.get("name", ""),
+                    "email": p_data.get("email", ""),
+                    "healthId": p_data.get("healthId", ""),
+                })
+
+        return {"patients": patients, "total": len(patients)}
     except Exception as e:
+        if hasattr(e, 'status_code'):
+            raise e
         raise HTTPException(status_code=500, detail=f"Failed to fetch patients: {str(e)}")
 
 
 @router.get("/hospital/stats")
 def get_hospital_stats(uid: str = Depends(get_current_hospital_uid)):
-    """Returns aggregate stats: Total patients, doctors, reports, and high-risk reports."""
+    """
+    Returns stats scoped to THIS hospital only:
+      - total_doctors    : doctors affiliated with this hospital
+      - total_patients   : unique patients assigned to those doctors
+      - high_risk_alerts : unresolved High-risk alerts for those patients
+    Hospital cannot see platform-wide totals or other hospitals' data.
+    """
     try:
         db = firestore.client()
-        total_patients = sum(1 for _ in db.collection("users").where("role", "==", "patient").stream())
-        total_doctors = sum(1 for _ in db.collection("users").where("role", "==", "doctor").stream())
-        total_reports = sum(1 for _ in db.collection_group("reports").stream())
-        high_risk_reports = len(list(
-            db.collection("alerts").where("status", "==", "unresolved").where("risk_level", "==", "High").stream()
-        ))
+
+        # Resolve hospitalId
+        hosp_doc = db.collection("users").document(uid).get()
+        hosp_data = hosp_doc.to_dict() if hosp_doc.exists else {}
+        hospital_id = hosp_data.get("hospitalId", "")
+        if not hospital_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Hospital account setup is incomplete (missing hospitalId)."
+            )
+
+        # Doctors under this hospital
+        doctor_docs = list(
+            db.collection("users")
+            .where("role", "==", "doctor")
+            .where("hospitalId", "==", hospital_id)
+            .stream()
+        )
+        doctor_uids = [d.id for d in doctor_docs]
+        total_doctors = len(doctor_uids)
+
+        # Unique patients assigned to those doctors
+        patient_uid_set: set = set()
+        for doc_uid in doctor_uids:
+            for a in (
+                db.collection("doctor_assignments")
+                .document(doc_uid)
+                .collection("patients")
+                .where("status", "==", "active")
+                .stream()
+            ):
+                patient_uid_set.add(a.id)
+        total_patients = len(patient_uid_set)
+
+        # High-risk unresolved alerts scoped to this hospital's patients only
+        high_risk_alerts = 0
+        if patient_uid_set:
+            all_alerts = (
+                db.collection("alerts")
+                .where("status", "==", "unresolved")
+                .where("risk_level", "==", "High")
+                .stream()
+            )
+            high_risk_alerts = sum(
+                1 for a in all_alerts
+                if a.to_dict().get("patient_uid") in patient_uid_set
+            )
+
         return {
-            "total_patients": total_patients,
             "total_doctors": total_doctors,
-            "total_reports": total_reports,
-            "high_risk_reports": high_risk_reports,
+            "total_patients": total_patients,
+            "high_risk_alerts": high_risk_alerts,
+            # Removed: total_reports and platform-wide totals
         }
     except Exception as e:
+        if hasattr(e, 'status_code'):
+            raise e
         raise HTTPException(status_code=500, detail=f"Failed to fetch hospital stats: {str(e)}")
 
 
