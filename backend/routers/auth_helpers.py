@@ -129,6 +129,22 @@ def get_any_authenticated_uid(credentials: HTTPAuthorizationCredentials = Depend
         raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid token.")
 
 
+def get_authenticated_user_info(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """
+    Returns {"uid": str, "role": str} for any valid Firebase ID token.
+    Used by endpoints that need role-aware access control beyond a single-role gate.
+    """
+    try:
+        from firebase_admin import auth
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        return {
+            "uid": decoded_token.get("uid"),
+            "role": decoded_token.get("role", ""),
+        }
+    except Exception:
+        raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid token.")
+
+
 # ─── Shared Request Models ────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):

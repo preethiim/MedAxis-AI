@@ -23,6 +23,7 @@ from prescription_utils import build_prescription_bundle
 from routers.auth_helpers import (
     get_current_patient_uid,
     get_any_authenticated_uid,
+    get_authenticated_user_info,
     PatientRequest,
     VitalsRequest,
     DiagnosticReportRequest,
@@ -429,43 +430,112 @@ def get_patient_me(uid: str = Depends(get_current_patient_uid)):
 
 
 @router.get("/patient/lookup")
-def lookup_patient_by_health_id(health_id: str, requester_uid: str = Depends(get_any_authenticated_uid)):
+def lookup_patient_by_health_id(
+    health_id: str,
+    requester: dict = Depends(get_authenticated_user_info),
+):
     """
-    Allows any authenticated user (doctor, hospital, superadmin) to search
-    for a patient by their Health ID. Requires a valid Firebase Bearer token.
+    Search for a patient by Health ID.
+
+    Access rules:
+      - hospital / superadmin  → unrestricted (administrative oversight)
+      - doctor                 → allowed ONLY IF:
+                                   (1) patient explicitly granted consent to this doctor, OR
+                                   (2) doctor is explicitly assigned to this patient
+                                 Otherwise returns 403.
+      - patient / other        → 403 (patients use /patient/me, not lookup)
     """
+    requester_uid = requester["uid"]
+    requester_role = requester["role"]
+
+    # Block roles that should never use lookup
+    if requester_role not in ("doctor", "hospital", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied — this endpoint is for clinical staff only.",
+        )
+
     try:
         db = firestore.client()
+
+        # ── Find the patient by healthId ────────────────────────────────────────
         users = db.collection("users").where("role", "==", "patient").stream()
+        matched_uid = None
+        matched_data = None
         for u in users:
             data = u.to_dict()
             if data.get("healthId", "") == health_id:
-                reports = list(db.collection("fhir_reports").document(u.id).collection("reports").stream())
-                if not reports:
-                    reports = list(db.collection("patients").document(u.id).collection("diagnostic_reports").stream())
-                report_list = []
-                for r in reports:
-                    rd = r.to_dict()
-                    if "id" not in rd:
-                        rd["id"] = r.id
-                    report_list.append(rd)
-                rx_docs = db.collection("fhir_prescriptions").document(u.id).collection("prescriptions").stream()
-                prescriptions = [rx.to_dict() for rx in rx_docs]
-                return {
-                    "found": True,
-                    "patient": {
-                        "uid": u.id,
-                        "name": data.get("name", "Unknown"),
-                        "email": data.get("email", ""),
-                        "healthId": data.get("healthId", ""),
-                        "height": data.get("height", ""),
-                        "weight": data.get("weight", ""),
-                        "bmi": data.get("bmi", ""),
-                    },
-                    "reports": report_list,
-                    "prescriptions": prescriptions,
-                }
-        raise HTTPException(status_code=404, detail=f"No patient found with Health ID: {health_id}")
+                matched_uid = u.id
+                matched_data = data
+                break
+
+        if not matched_uid:
+            raise HTTPException(status_code=404, detail=f"No patient found with Health ID: {health_id}")
+
+        # ── Doctor access gate ──────────────────────────────────────────────────
+        if requester_role == "doctor":
+            has_access = False
+
+            # Condition 1: patient granted consent to this doctor
+            consent_doc = (
+                db.collection("consents")
+                .document(matched_uid)
+                .collection("doctors")
+                .document(requester_uid)
+                .get()
+            )
+            if consent_doc.exists and consent_doc.to_dict().get("granted") is True:
+                has_access = True
+
+            # Condition 2: doctor is explicitly assigned to this patient
+            if not has_access:
+                assignment_doc = (
+                    db.collection("doctor_assignments")
+                    .document(requester_uid)
+                    .collection("patients")
+                    .document(matched_uid)
+                    .get()
+                )
+                if assignment_doc.exists and assignment_doc.to_dict().get("status") == "active":
+                    has_access = True
+
+            if not has_access:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied — patient consent required.",
+                )
+
+        # ── Build response (schema unchanged) ───────────────────────────────────
+        reports = list(db.collection("fhir_reports").document(matched_uid).collection("reports").stream())
+        if not reports:
+            reports = list(db.collection("patients").document(matched_uid).collection("diagnostic_reports").stream())
+        report_list = []
+        for r in reports:
+            rd = r.to_dict()
+            if "id" not in rd:
+                rd["id"] = r.id
+            report_list.append(rd)
+
+        prescriptions = [
+            rx.to_dict()
+            for rx in db.collection("fhir_prescriptions").document(matched_uid).collection("prescriptions").stream()
+        ]
+
+        return {
+            "found": True,
+            "patient": {
+                "uid": matched_uid,
+                "name": matched_data.get("name", "Unknown"),
+                "email": matched_data.get("email", ""),
+                "healthId": matched_data.get("healthId", ""),
+                "height": matched_data.get("height", ""),
+                "weight": matched_data.get("weight", ""),
+                "bmi": matched_data.get("bmi", ""),
+            },
+            "reports": report_list,
+            "prescriptions": prescriptions,
+        }
+
     except HTTPException:
         raise
     except Exception as e:
