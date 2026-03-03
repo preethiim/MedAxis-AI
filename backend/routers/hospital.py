@@ -143,6 +143,8 @@ def get_hospital_doctors(uid: str = Depends(get_current_hospital_uid)):
                 "doctorId": doc_data.get("doctorId", ""),
                 "employeeId": doc_data.get("employeeId", ""),
                 "patient_count": len(assignments),
+                "profileImage": doc_data.get("profileImage", ""),
+                "specialization": doc_data.get("specialization", ""),
             })
         return {"doctors": doctors, "total": len(doctors)}
     except Exception as e:

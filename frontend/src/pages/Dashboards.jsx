@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Building2, Stethoscope, User, LogOut, UserPlus, CheckCircle, AlertCircle, Search, FileText, Activity } from 'lucide-react';
+import { ProfileImageUpload } from '../components/ProfileImageUpload';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -18,6 +19,22 @@ export const DoctorDashboard = () => {
     const [searchResult, setSearchResult] = useState(null);
     const [searchError, setSearchError] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
+    const [profileImage, setProfileImage] = useState(null);
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (!currentUser) return;
+            try {
+                const token = await currentUser.getIdToken();
+                const res = await fetch(`${API_BASE_URL}/user/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    setProfileImage(data.profileImage || null);
+                }
+            } catch (err) { console.error('Failed to fetch profile:', err); }
+        };
+        fetchProfile();
+    }, [currentUser]);
 
     // Prescription State
     const [showPrescribeModal, setShowPrescribeModal] = useState(false);
@@ -133,13 +150,16 @@ export const DoctorDashboard = () => {
     const tabs = [
         { id: 'patients', label: '🔍 Search Patient' },
         { id: 'reports', label: '📋 My Patients' },
+        { id: 'profile', label: '👤 Profile' },
     ];
 
     return (
         <div className="dashboard">
             <div className="dashboard-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <img src="/logo.png" alt="MedAxis AI Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: profileImage ? 'none' : 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {profileImage ? <img src={profileImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Stethoscope size={20} color="white" />}
+                    </div>
                     <div>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Doctor Workspace</h2>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
@@ -302,6 +322,18 @@ export const DoctorDashboard = () => {
                 </div>
             )}
 
+            {/* Profile */}
+            {activeTab === 'profile' && (
+                <div className="glass-panel" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '400px', margin: '0 auto' }}>
+                    <ProfileImageUpload
+                        currentImage={profileImage}
+                        onImageUpdate={url => setProfileImage(url)}
+                    />
+                    <h3 style={{ marginTop: '1.5rem', marginBottom: '0.25rem' }}>{currentUser?.displayName || 'Doctor'}</h3>
+                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
+                </div>
+            )}
+
             {/* Prescription Modal */}
             {showPrescribeModal && (
                 <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem', backdropFilter: 'blur(4px)' }}>
@@ -353,7 +385,24 @@ export const HospitalDashboard = () => {
     // We can also let the hospital perform unrestricted lookups if they want
     const [searchId, setSearchId] = useState('');
     const [searchResult, setSearchResult] = useState(null);
-    const [searchError, setSearchError] = useState('');
+    const [profileImage, setProfileImage] = useState(null);
+    const [profile, setProfile] = useState(null);
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (!currentUser) return;
+            try {
+                const token = await currentUser.getIdToken();
+                const res = await fetch(`${API_BASE_URL}/user/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    setProfileImage(data.profileImage || null);
+                    setProfile(data);
+                }
+            } catch (err) { console.error('Failed to fetch profile:', err); }
+        };
+        fetchProfile();
+    }, [currentUser]);
 
     useEffect(() => {
         const fetchHospitalData = async () => {
@@ -402,7 +451,8 @@ export const HospitalDashboard = () => {
         { id: 'overview', label: '📊 Overview' },
         { id: 'doctors', label: '🩺 Our Doctors' },
         { id: 'patients', label: '👥 Our Patients' },
-        { id: 'lookup', label: '🔍 Patient Lookup' }
+        { id: 'lookup', label: '🔍 Patient Lookup' },
+        { id: 'profile', label: '👤 Profile' }
     ];
 
     const cardStyle = {
@@ -415,10 +465,19 @@ export const HospitalDashboard = () => {
         <div className="dashboard">
             <div className="dashboard-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <img src="/logo.png" alt="MedAxis AI Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: profileImage ? 'none' : 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {profileImage ? <img src={profileImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Building2 size={20} color="white" />}
+                    </div>
                     <div>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Hospital Admin</h2>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>{profile?.name || currentUser?.displayName || 'Hospital Admin'}</h2>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
+                        {profile?.hospitalId && (
+                            <div style={{ marginTop: '0.2rem' }}>
+                                <span style={{ fontSize: '0.75rem', background: 'rgba(236,72,153,0.1)', color: '#ec4899', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}>
+                                    🏥 {profile.hospitalId}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -457,21 +516,32 @@ export const HospitalDashboard = () => {
                             <h3 style={{ marginBottom: '1rem', color: '#10b981' }}>Affiliated Doctors ({doctors.length})</h3>
                             {doctors.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No doctors currently affiliated.</p> : (
                                 <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                         <thead>
                                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Name</th>
-                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Email</th>
-                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Doctor ID</th>
-                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Emp ID</th>
-                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Active Patients</th>
+                                                <th style={{ padding: '0.75rem', color: 'var(--text-muted)', width: '50px' }}>Profile</th>
+                                                <th style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>Name</th>
+                                                <th style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>Specialization</th>
+                                                <th style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>Doctor ID</th>
+                                                <th style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>Emp ID</th>
+                                                <th style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>Active Patients</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {doctors.map(d => (
                                                 <tr key={d.uid} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                                    <td style={{ padding: '0.75rem' }}>{d.name || '—'}</td>
-                                                    <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{d.email}</td>
+                                                    <td style={{ padding: '0.75rem' }}>
+                                                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: d.profileImage ? 'none' : 'var(--input-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                                                            {d.profileImage ? <img src={d.profileImage} alt={d.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={16} color="var(--text-dim)" />}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '0.75rem' }}>
+                                                        <div style={{ fontWeight: 500 }}>{d.name || '—'}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.email}</div>
+                                                    </td>
+                                                    <td style={{ padding: '0.75rem' }}>
+                                                        {d.specialization ? <span style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>{d.specialization}</span> : <span style={{ color: 'var(--text-dim)' }}>—</span>}
+                                                    </td>
                                                     <td style={{ padding: '0.75rem' }}><span style={{ fontFamily: 'monospace', color: '#60a5fa' }}>{d.doctorId || '—'}</span></td>
                                                     <td style={{ padding: '0.75rem' }}><span style={{ fontFamily: 'monospace', color: '#f472b6' }}>{d.employeeId || '—'}</span></td>
                                                     <td style={{ padding: '0.75rem', fontWeight: 600, color: '#10b981' }}>{d.patient_count}</td>
@@ -538,6 +608,18 @@ export const HospitalDashboard = () => {
                                     {searchResult.reports.length > 0 && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{searchResult.reports.length} report(s) on file</div>}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Profile */}
+                    {activeTab === 'profile' && (
+                        <div className="glass-panel" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '400px', margin: '0 auto' }}>
+                            <ProfileImageUpload
+                                currentImage={profileImage}
+                                onImageUpdate={url => setProfileImage(url)}
+                            />
+                            <h3 style={{ marginTop: '1.5rem', marginBottom: '0.25rem' }}>{currentUser?.displayName || 'Hospital Admin'}</h3>
+                            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
                         </div>
                     )}
                 </>

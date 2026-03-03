@@ -48,7 +48,8 @@ def health_check():
 
 from pydantic import BaseModel
 from firebase_admin import firestore
-from routers.auth_helpers import RegisterRequest, generate_unique_id, build_standard_user_doc
+from fastapi import Depends, UploadFile, File
+from routers.auth_helpers import RegisterRequest, generate_unique_id, build_standard_user_doc, get_any_authenticated_uid
 
 
 @app.post("/auth/register")
@@ -110,6 +111,65 @@ def register_user(req: RegisterRequest):
         if "EMAIL_EXISTS" in error_msg or "email-already-exists" in error_msg:
             raise HTTPException(status_code=400, detail="The email address is already in use by another account.")
         raise HTTPException(status_code=500, detail=f"Registration failed: {error_msg}")
+
+
+# ─── File Uploads ─────────────────────────────────────────────────────────────
+
+@app.post("/upload/profile-image")
+async def upload_profile_image(
+    file: UploadFile = File(...),
+    token_uid: str = Depends(get_any_authenticated_uid)
+):
+    """
+    Allows any authenticated user to upload/update their profile image.
+    Enforces a 5MB size limit. Saves to profile_images/{uid}.jpg in Storage,
+    and updates users/{uid}.profileImage in Firestore.
+    """
+    from fastapi import HTTPException
+    
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image.")
+        
+    file_bytes = await file.read()
+    if len(file_bytes) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit.")
+        
+    try:
+        from firebase_admin import storage, firestore
+        bucket = storage.bucket()
+        blob = bucket.blob(f"profile_images/{token_uid}.jpg")
+        blob.upload_from_string(file_bytes, content_type=file.content_type)
+        blob.make_public()
+        image_url = blob.public_url
+        
+        db = firestore.client()
+        db.collection("users").document(token_uid).update({"profileImage": image_url})
+        
+        return {
+            "success": True, 
+            "profileImage": image_url, 
+            "message": "Profile image updated successfully."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload profile image: {str(e)}")
+
+
+@app.get("/user/me")
+def get_current_user_profile(token_uid: str = Depends(get_any_authenticated_uid)):
+    """
+    Returns the user's Firestore document regardless of their role.
+    Used by frontend to load profileImage URL and basic info common across all roles.
+    """
+    from fastapi import HTTPException
+    from firebase_admin import firestore
+    
+    db = firestore.client()
+    doc = db.collection("users").document(token_uid).get()
+    
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="User profile not found")
+        
+    return doc.to_dict()
 
 
 # ─── Register Routers ─────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth } from '../firebase/firebaseConfig';
 import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Upload, Footprints, RefreshCw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { ProfileImageUpload } from '../components/ProfileImageUpload';
 
 const FASTAPI_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -31,6 +32,7 @@ const PatientDashboard = () => {
     const [stepMsg, setStepMsg] = useState(null);
     const [syncLoading, setSyncLoading] = useState(false);
     const [healthId, setHealthId] = useState('');
+    const [profileImage, setProfileImage] = useState(null);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -74,6 +76,7 @@ const PatientDashboard = () => {
                 if (res.ok) {
                     const data = await res.json();
                     setHealthId(data.healthId || '');
+                    setProfileImage(data.profileImage || null);
                 }
             } catch (err) { console.error('Failed to fetch patient profile:', err); }
         };
@@ -205,8 +208,8 @@ const PatientDashboard = () => {
             {/* Header */}
             <div className="dashboard-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <User size={20} color="white" />
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: profileImage ? 'none' : 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {profileImage ? <img src={profileImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} color="white" />}
                     </div>
                     <div>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Patient Portal</h2>
@@ -453,19 +456,29 @@ const PatientDashboard = () => {
 
                     {/* PROFILE */}
                     {activeTab === 'profile' && (
-                        <form onSubmit={submitProfile}>
-                            <h3 style={{ fontSize: '1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><User size={20} /> FHIR Patient Profile</h3>
-                            <div className="form-group"><label className="form-label">First Name</label><input className="form-input" placeholder="Enter first name" value={profile.firstName} onChange={e => setProfile({ ...profile, firstName: e.target.value })} required /></div>
-                            <div className="form-group"><label className="form-label">Last Name</label><input className="form-input" placeholder="Enter last name" value={profile.lastName} onChange={e => setProfile({ ...profile, lastName: e.target.value })} required /></div>
-                            <div className="form-group"><label className="form-label">Gender</label>
-                                <select className="form-input" value={profile.gender} onChange={e => setProfile({ ...profile, gender: e.target.value })} required>
-                                    <option value="" disabled>Select Gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
-                                </select>
+                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                            <div className="glass-panel" style={{ padding: '2rem', flex: '1 1 250px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <ProfileImageUpload
+                                    currentImage={profileImage}
+                                    onImageUpdate={url => setProfileImage(url)}
+                                />
+                                <h4 style={{ marginTop: '1rem', marginBottom: '0.25rem' }}>{profile.firstName} {profile.lastName}</h4>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
                             </div>
-                            <div className="form-group"><label className="form-label">Date of Birth</label><input className="form-input" type="date" value={profile.birthDate} onChange={e => setProfile({ ...profile, birthDate: e.target.value })} required /></div>
-                            <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save Profile'}</button>
-                            {results.profile && <div style={{ marginTop: '1rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}><CheckCircle size={16} /> Saved Successfully</div>}
-                        </form>
+                            <form onSubmit={submitProfile} className="glass-panel" style={{ flex: '2 1 400px' }}>
+                                <h3 style={{ fontSize: '1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><User size={20} /> Personal Information</h3>
+                                <div className="form-group"><label className="form-label">First Name</label><input className="form-input" placeholder="Enter first name" value={profile.firstName} onChange={e => setProfile({ ...profile, firstName: e.target.value })} required /></div>
+                                <div className="form-group"><label className="form-label">Last Name</label><input className="form-input" placeholder="Enter last name" value={profile.lastName} onChange={e => setProfile({ ...profile, lastName: e.target.value })} required /></div>
+                                <div className="form-group"><label className="form-label">Gender</label>
+                                    <select className="form-input" value={profile.gender} onChange={e => setProfile({ ...profile, gender: e.target.value })} required>
+                                        <option value="" disabled>Select Gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div className="form-group"><label className="form-label">Date of Birth</label><input className="form-input" type="date" value={profile.birthDate} onChange={e => setProfile({ ...profile, birthDate: e.target.value })} required /></div>
+                                <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save Profile'}</button>
+                                {results.profile && <div style={{ marginTop: '1rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}><CheckCircle size={16} /> Saved Successfully</div>}
+                            </form>
+                        </div>
                     )}
 
                     {/* VITALS */}
