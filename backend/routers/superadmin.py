@@ -13,6 +13,7 @@ from routers.auth_helpers import (
     get_current_superadmin_uid,
     SuperAdminCreateUserRequest,
     generate_unique_id,
+    build_standard_user_doc,
 )
 
 router = APIRouter()
@@ -106,24 +107,26 @@ def superadmin_create_user(req: SuperAdminCreateUserRequest, admin_uid: str = De
         fb_auth.set_custom_user_claims(user_record.uid, {"role": req.role})
 
         db = firestore.client()
-        user_data = {
+        
+        args = {
             "uid": user_record.uid,
             "role": req.role,
             "email": req.email,
             "name": req.name,
-            "createdAt": firestore.SERVER_TIMESTAMP,
-            "createdBy": admin_uid,
+            "created_by": admin_uid,
         }
 
         if req.role == "patient":
-            user_data["healthId"] = generate_unique_id(db, "healthId", "PAT-", 6)
-            user_data["height"] = ""
-            user_data["weight"] = ""
-            user_data["bmi"] = ""
+            args["healthId"] = generate_unique_id(db, "healthId", "PAT-", 6)
+            args["height"] = ""
+            args["weight"] = ""
+            args["bmi"] = ""
         elif req.role == "doctor":
-            user_data["doctorId"] = generate_unique_id(db, "doctorId", "DOC-", 4)
+            args["doctorId"] = generate_unique_id(db, "doctorId", "DOC-", 4)
         elif req.role == "hospital":
-            user_data["hospitalId"] = generate_unique_id(db, "hospitalId", "HOSP-", 4, digits_only=True)
+            args["hospitalId"] = generate_unique_id(db, "hospitalId", "HOSP-", 4, digits_only=True)
+
+        user_data = build_standard_user_doc(**args)
 
         db.collection("users").document(user_record.uid).set(user_data)
 

@@ -48,7 +48,7 @@ def health_check():
 
 from pydantic import BaseModel
 from firebase_admin import firestore
-from routers.auth_helpers import RegisterRequest, generate_unique_id
+from routers.auth_helpers import RegisterRequest, generate_unique_id, build_standard_user_doc
 
 
 @app.post("/auth/register")
@@ -86,18 +86,17 @@ def register_user(req: RegisterRequest):
 
         db = firestore.client()
         health_id = generate_unique_id(db, "healthId", "PAT-", 6)
-        user_data = {
-            "uid": user_record.uid,
-            "role": "patient",
-            "email": req.email,
-            "createdAt": firestore.SERVER_TIMESTAMP,
-            "healthId": health_id,
-            "height": req.height,
-            "weight": req.weight,
-            "bmi": req.bmi,
-        }
-        if req.name:
-            user_data["name"] = req.name
+        
+        user_data = build_standard_user_doc(
+            uid=user_record.uid,
+            role="patient",
+            email=req.email,
+            name=req.name,
+            healthId=health_id,
+            height=req.height,
+            weight=req.weight,
+            bmi=req.bmi
+        )
 
         db.collection("users").document(user_record.uid).set(user_data)
         return {

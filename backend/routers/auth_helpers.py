@@ -256,3 +256,63 @@ REWARD_TIERS = [
     (10000, 25),
     (5000, 10),
 ]
+
+
+# ─── Schema Standardization ───────────────────────────────────────────────────
+
+def build_standard_user_doc(
+    uid: str,
+    role: str,
+    email: str,
+    name: str = "",
+    created_by: str = "",
+    **kwargs
+) -> dict:
+    """
+    Constructs a standardized Firestore user document conforming to:
+    {
+      role: "patient" | "doctor" | "hospital" | "superadmin",
+      fullName: "", email: "", profileImage: "",
+      hospitalId: "", doctorId: "", employeeId: "", healthId: "",
+      specialization: "", qualification: "", yearsOfExperience: 0,
+      bio: "", createdBy: ""
+    }
+    Enforces that specific IDs exist only for specific roles.
+    """
+    from firebase_admin import firestore
+    
+    doc = {
+        "uid": uid,
+        "role": role,
+        "fullName": name,
+        "name": name,  # Kept for backward compatibility
+        "email": email,
+        "profileImage": kwargs.get("profileImage", ""),
+        "specialization": kwargs.get("specialization", ""),
+        "qualification": kwargs.get("qualification", ""),
+        "yearsOfExperience": kwargs.get("yearsOfExperience", 0),
+        "bio": kwargs.get("bio", ""),
+        "createdBy": created_by,
+        "createdAt": firestore.SERVER_TIMESTAMP,
+    }
+
+    # Conditionally inject IDs based on role
+    if role == "patient":
+        doc["healthId"] = kwargs.get("healthId", "")
+    elif role == "doctor":
+        doc["doctorId"] = kwargs.get("doctorId", "")
+        doc["employeeId"] = kwargs.get("employeeId", "")
+        doc["hospitalId"] = kwargs.get("hospitalId", "")
+        if "hospitalUid" in kwargs:
+            doc["hospitalUid"] = kwargs["hospitalUid"]
+    elif role == "hospital":
+        # Hospitals historically need their own hospitalId to assign doctors
+        if "hospitalId" in kwargs:
+            doc["hospitalId"] = kwargs["hospitalId"]
+
+    # Merge any other legacy fields (like height, weight) without overriding standards
+    for k, v in kwargs.items():
+        if k not in doc and k not in ["healthId", "doctorId", "employeeId", "hospitalId", "hospitalUid"]:
+            doc[k] = v
+
+    return doc

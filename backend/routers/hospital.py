@@ -14,6 +14,7 @@ from routers.auth_helpers import (
     PatientAssignRequest,
     CreateDoctorRequest,
     generate_unique_id,
+    build_standard_user_doc,
 )
 
 router = APIRouter()
@@ -58,18 +59,17 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
         doctor_id = generate_unique_id(db, "doctorId", "DOC-", 4)
         employee_id = generate_unique_id(db, "employeeId", f"EMP-{hospital_code}-", 4, digits_only=True)
 
-        user_data = {
-            "uid": user_record.uid,
-            "role": "doctor",
-            "email": req.email,
-            "name": req.name,
-            "doctorId": doctor_id,
-            "employeeId": employee_id,
-            "hospitalId": hospital_id,        # ← explicit affiliation
-            "hospitalUid": hospital_uid,       # ← creating hospital's UID for lookups
-            "createdAt": firestore.SERVER_TIMESTAMP,
-            "createdBy": hospital_uid,
-        }
+        user_data = build_standard_user_doc(
+            uid=user_record.uid,
+            role="doctor",
+            email=req.email,
+            name=req.name,
+            doctorId=doctor_id,
+            employeeId=employee_id,
+            hospitalId=hospital_id,
+            hospitalUid=hospital_uid,
+            created_by=hospital_uid,
+        )
         db.collection("users").document(user_record.uid).set(user_data)
 
         db.collection("audit_logs").document().set({
