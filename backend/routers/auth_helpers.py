@@ -58,14 +58,33 @@ def get_current_patient_uid(credentials: HTTPAuthorizationCredentials = Depends(
 
 
 def get_current_doctor_uid(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify the caller is a doctor and return their UID."""
+    """
+    Verify the caller is a doctor with a valid hospitalId.
+    Raises 403 if:
+      - token role != 'doctor'
+      - Firestore user doc has no hospitalId (unaffiliated doctor)
+    """
     try:
-        from firebase_admin import auth
+        from firebase_admin import auth, firestore as fb_firestore
         decoded_token = auth.verify_id_token(credentials.credentials)
         role = decoded_token.get("role", "")
         if role != "doctor":
             raise HTTPException(status_code=403, detail="Unauthorized: Only doctors can perform this action.")
-        return decoded_token.get("uid")
+        uid = decoded_token.get("uid")
+
+        # Verify doctor has a hospitalId on file — unaffiliated doctors are blocked
+        db = fb_firestore.client()
+        doc = db.collection("users").document(uid).get()
+        if not doc.exists:
+            raise HTTPException(status_code=403, detail="Doctor profile not found. Please contact your hospital admin.")
+        doctor_data = doc.to_dict()
+        if not doctor_data.get("hospitalId"):
+            raise HTTPException(
+                status_code=403,
+                detail="Doctor is not affiliated with any hospital. "
+                       "Contact your hospital admin to complete account setup."
+            )
+        return uid
     except Exception as e:
         if hasattr(e, 'status_code'):
             raise e

@@ -32,22 +32,28 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
     - Logs action to audit_logs.
     """
     try:
+        db = firestore.client()
+
+        # Resolve the creating hospital's hospitalId — required to affiliate the doctor
+        hosp_doc = db.collection("users").document(hospital_uid).get()
+        hosp_data = hosp_doc.to_dict() if hosp_doc.exists else {}
+        hospital_id = hosp_data.get("hospitalId", "")
+        if not hospital_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Hospital account setup is incomplete (missing hospitalId). "
+                       "Contact your super admin."
+            )
+
+        # Extract numeric code (e.g. "HOSP-4821" → "4821") for employeeId prefix
+        hospital_code = hospital_id.split("-")[-1]
+
         user_record = auth.create_user(
             email=req.email,
             password=req.password,
             display_name=req.name
         )
         auth.set_custom_user_claims(user_record.uid, {"role": "doctor"})
-
-        db = firestore.client()
-
-        # Derive the hospital code from the creating hospital's hospitalId
-        # Falls back to the UID prefix if hospitalId is not set
-        hosp_doc = db.collection("users").document(hospital_uid).get()
-        hosp_data = hosp_doc.to_dict() if hosp_doc.exists else {}
-        hosp_id_field = hosp_data.get("hospitalId", "")
-        # Extract the numeric portion after HOSP- (e.g. "HOSP-4821" → "4821")
-        hospital_code = hosp_id_field.split("-")[-1] if hosp_id_field else hospital_uid[:4].upper()
 
         doctor_id = generate_unique_id(db, "doctorId", "DOC-", 4)
         employee_id = generate_unique_id(db, "employeeId", f"EMP-{hospital_code}-", 4, digits_only=True)
@@ -59,6 +65,8 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
             "name": req.name,
             "doctorId": doctor_id,
             "employeeId": employee_id,
+            "hospitalId": hospital_id,        # ← explicit affiliation
+            "hospitalUid": hospital_uid,       # ← creating hospital's UID for lookups
             "createdAt": firestore.SERVER_TIMESTAMP,
             "createdBy": hospital_uid,
         }
@@ -67,6 +75,7 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
         db.collection("audit_logs").document().set({
             "action": "HOSPITAL_CREATE_DOCTOR",
             "hospital_uid": hospital_uid,
+            "hospital_id": hospital_id,
             "created_uid": user_record.uid,
             "doctor_id": doctor_id,
             "employee_id": employee_id,
@@ -79,7 +88,8 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
             "uid": user_record.uid,
             "doctorId": doctor_id,
             "employeeId": employee_id,
-            "message": "Doctor account created successfully",
+            "hospitalId": hospital_id,
+            "message": "Doctor account created and affiliated successfully",
         }
     except Exception as e:
         error_msg = str(e)
@@ -166,6 +176,9 @@ def assign_patient_to_doctor(req: PatientAssignRequest, uid: str = Depends(get_c
         if req.hospital_uid != uid:
             raise HTTPException(status_code=400, detail="Mismatched assigner ID.")
 
+        db = firestore.client()
+
+        # Verify doctor exists, has doctor role, AND belongs to THIS hospital
         try:
             doc_record = auth.get_user(req.doctor_uid)
             if (doc_record.custom_claims or {}).get('role') != 'doctor':
@@ -175,12 +188,25 @@ def assign_patient_to_doctor(req: PatientAssignRequest, uid: str = Depends(get_c
                 raise auth_e
             raise HTTPException(status_code=404, detail="Doctor user not found.")
 
+        # Enforce hospital ownership — doctor must be affiliated with this hospital
+        doctor_doc = db.collection("users").document(req.doctor_uid).get()
+        if not doctor_doc.exists:
+            raise HTTPException(status_code=404, detail="Doctor profile not found.")
+        doctor_data = doctor_doc.to_dict()
+        hosp_doc = db.collection("users").document(uid).get()
+        hosp_data = hosp_doc.to_dict() if hosp_doc.exists else {}
+        if doctor_data.get("hospitalId") != hosp_data.get("hospitalId"):
+            raise HTTPException(
+                status_code=403,
+                detail="Doctor is not affiliated with your hospital. "
+                       "You can only assign patients to doctors under your hospital."
+            )
+
         try:
             auth.get_user(req.patient_uid)
         except Exception:
             raise HTTPException(status_code=404, detail="Patient user not found.")
 
-        db = firestore.client()
         db.collection("doctor_assignments").document(req.doctor_uid).collection("patients").document(req.patient_uid).set({
             "assigned_by": req.hospital_uid,
             "assigned_at": firestore.SERVER_TIMESTAMP,
