@@ -48,7 +48,7 @@ def health_check():
 
 from pydantic import BaseModel
 from firebase_admin import firestore
-from routers.auth_helpers import RegisterRequest
+from routers.auth_helpers import RegisterRequest, generate_unique_id
 
 
 @app.post("/auth/register")
@@ -85,13 +85,13 @@ def register_user(req: RegisterRequest):
         auth.set_custom_user_claims(user_record.uid, {"role": "patient"})
 
         db = firestore.client()
-        generated_health_id = "PAT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        health_id = generate_unique_id(db, "healthId", "PAT-", 6)
         user_data = {
             "uid": user_record.uid,
             "role": "patient",
             "email": req.email,
             "createdAt": firestore.SERVER_TIMESTAMP,
-            "healthId": req.healthId if req.healthId else generated_health_id,
+            "healthId": health_id,
             "height": req.height,
             "weight": req.weight,
             "bmi": req.bmi,
@@ -100,7 +100,12 @@ def register_user(req: RegisterRequest):
             user_data["name"] = req.name
 
         db.collection("users").document(user_record.uid).set(user_data)
-        return {"success": True, "uid": user_record.uid, "message": "Patient account registered successfully"}
+        return {
+            "success": True,
+            "uid": user_record.uid,
+            "healthId": health_id,
+            "message": "Patient account registered successfully",
+        }
     except Exception as e:
         error_msg = str(e)
         if "EMAIL_EXISTS" in error_msg or "email-already-exists" in error_msg:

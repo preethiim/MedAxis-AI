@@ -13,6 +13,7 @@ from routers.auth_helpers import (
     RoleAssignRequest,
     PatientAssignRequest,
     CreateDoctorRequest,
+    generate_unique_id,
 )
 
 router = APIRouter()
@@ -39,13 +40,25 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
         auth.set_custom_user_claims(user_record.uid, {"role": "doctor"})
 
         db = firestore.client()
-        doctor_id = "DOC-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+        # Derive the hospital code from the creating hospital's hospitalId
+        # Falls back to the UID prefix if hospitalId is not set
+        hosp_doc = db.collection("users").document(hospital_uid).get()
+        hosp_data = hosp_doc.to_dict() if hosp_doc.exists else {}
+        hosp_id_field = hosp_data.get("hospitalId", "")
+        # Extract the numeric portion after HOSP- (e.g. "HOSP-4821" → "4821")
+        hospital_code = hosp_id_field.split("-")[-1] if hosp_id_field else hospital_uid[:4].upper()
+
+        doctor_id = generate_unique_id(db, "doctorId", "DOC-", 4)
+        employee_id = generate_unique_id(db, "employeeId", f"EMP-{hospital_code}-", 4, digits_only=True)
+
         user_data = {
             "uid": user_record.uid,
             "role": "doctor",
             "email": req.email,
             "name": req.name,
             "doctorId": doctor_id,
+            "employeeId": employee_id,
             "createdAt": firestore.SERVER_TIMESTAMP,
             "createdBy": hospital_uid,
         }
@@ -56,11 +69,18 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
             "hospital_uid": hospital_uid,
             "created_uid": user_record.uid,
             "doctor_id": doctor_id,
+            "employee_id": employee_id,
             "email": req.email,
             "timestamp": firestore.SERVER_TIMESTAMP,
         })
 
-        return {"success": True, "uid": user_record.uid, "message": "Doctor account created successfully"}
+        return {
+            "success": True,
+            "uid": user_record.uid,
+            "doctorId": doctor_id,
+            "employeeId": employee_id,
+            "message": "Doctor account created successfully",
+        }
     except Exception as e:
         error_msg = str(e)
         if "EMAIL_EXISTS" in error_msg or "email-already-exists" in error_msg:

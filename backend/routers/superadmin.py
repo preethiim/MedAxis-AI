@@ -12,6 +12,7 @@ from firebase_admin import firestore
 from routers.auth_helpers import (
     get_current_superadmin_uid,
     SuperAdminCreateUserRequest,
+    generate_unique_id,
 )
 
 router = APIRouter()
@@ -115,14 +116,14 @@ def superadmin_create_user(req: SuperAdminCreateUserRequest, admin_uid: str = De
         }
 
         if req.role == "patient":
-            user_data["healthId"] = "PAT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            user_data["healthId"] = generate_unique_id(db, "healthId", "PAT-", 6)
             user_data["height"] = ""
             user_data["weight"] = ""
             user_data["bmi"] = ""
         elif req.role == "doctor":
-            user_data["doctorId"] = "DOC-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            user_data["doctorId"] = generate_unique_id(db, "doctorId", "DOC-", 4)
         elif req.role == "hospital":
-            user_data["employeeId"] = "HSP-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            user_data["hospitalId"] = generate_unique_id(db, "hospitalId", "HOSP-", 4, digits_only=True)
 
         db.collection("users").document(user_record.uid).set(user_data)
 

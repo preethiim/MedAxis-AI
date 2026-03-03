@@ -16,6 +16,31 @@ from pydantic import BaseModel as PydanticBaseModel
 security = HTTPBearer()
 
 
+# ─── ID Generation Helpers ────────────────────────────────────────────────────
+
+def _random_digits(n: int) -> str:
+    """Return n random decimal digits."""
+    return ''.join(random.choices(string.digits, k=n))
+
+def _random_alphanum(n: int) -> str:
+    """Return n random uppercase letters + digits."""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=n))
+
+def generate_unique_id(db, field: str, prefix: str, length: int, digits_only: bool = False) -> str:
+    """
+    Generate a prefixed ID that is guaranteed unique within the users collection.
+    Retries up to 10 times before raising RuntimeError.
+    """
+    for _ in range(10):
+        suffix = _random_digits(length) if digits_only else _random_alphanum(length)
+        candidate = f"{prefix}{suffix}"
+        # Check uniqueness
+        existing = list(db.collection("users").where(field, "==", candidate).limit(1).stream())
+        if not existing:
+            return candidate
+    raise RuntimeError(f"Could not generate a unique {field} after 10 attempts. Please retry.")
+
+
 # ─── Auth Dependencies ────────────────────────────────────────────────────────
 
 def get_current_patient_uid(credentials: HTTPAuthorizationCredentials = Depends(security)):
