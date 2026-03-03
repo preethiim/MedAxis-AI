@@ -1066,11 +1066,21 @@ def get_all_reports(uid: str = Depends(get_current_superadmin_uid)):
 
 # ─── Patient Lookup (Centralized Cross-Hospital) ──────────────────────────
 
+def get_any_authenticated_uid(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Accepts a valid Firebase ID token from any role (patient/doctor/hospital/superadmin)."""
+    try:
+        from firebase_admin import auth
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        return decoded_token.get("uid")
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Authentication required. Please provide a valid token.")
+
 @app.get("/patient/lookup")
-def lookup_patient_by_health_id(health_id: str):
+def lookup_patient_by_health_id(health_id: str, requester_uid: str = Depends(get_any_authenticated_uid)):
     """
-    Allows any authenticated user to search for a patient by their Health ID.
-    Returns basic patient info for cross-hospital record access.
+    Allows any authenticated user (doctor, hospital, superadmin) to search
+    for a patient by their Health ID. Requires a valid Firebase Bearer token.
     """
     from fastapi import HTTPException
     try:
@@ -1114,6 +1124,7 @@ def lookup_patient_by_health_id(health_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 # ─── Step Count & Reward System ────────────────────────────────────────────
