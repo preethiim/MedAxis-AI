@@ -2,6 +2,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # All /hospital/* and /admin/* endpoints.
 # ─────────────────────────────────────────────────────────────────────────────
+import random
+import string
 
 from fastapi import APIRouter, Depends, HTTPException
 from firebase_admin import firestore, auth
@@ -10,9 +12,60 @@ from routers.auth_helpers import (
     get_current_hospital_uid,
     RoleAssignRequest,
     PatientAssignRequest,
+    CreateDoctorRequest,
 )
 
 router = APIRouter()
+
+
+# ─── Hospital: Create Doctor Account ─────────────────────────────────────────
+
+@router.post("/hospital/create-doctor")
+def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends(get_current_hospital_uid)):
+    """
+    Allows a hospital admin to create a new doctor account.
+    - Requires a valid Bearer token with role = 'hospital'.
+    - Auto-generates a DOC-XXXXXX doctor ID.
+    - Sets Firebase custom claim role = 'doctor'.
+    - Writes Firestore user document.
+    - Logs action to audit_logs.
+    """
+    try:
+        user_record = auth.create_user(
+            email=req.email,
+            password=req.password,
+            display_name=req.name
+        )
+        auth.set_custom_user_claims(user_record.uid, {"role": "doctor"})
+
+        db = firestore.client()
+        doctor_id = "DOC-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        user_data = {
+            "uid": user_record.uid,
+            "role": "doctor",
+            "email": req.email,
+            "name": req.name,
+            "doctorId": doctor_id,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "createdBy": hospital_uid,
+        }
+        db.collection("users").document(user_record.uid).set(user_data)
+
+        db.collection("audit_logs").document().set({
+            "action": "HOSPITAL_CREATE_DOCTOR",
+            "hospital_uid": hospital_uid,
+            "created_uid": user_record.uid,
+            "doctor_id": doctor_id,
+            "email": req.email,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+        })
+
+        return {"success": True, "uid": user_record.uid, "message": "Doctor account created successfully"}
+    except Exception as e:
+        error_msg = str(e)
+        if "EMAIL_EXISTS" in error_msg or "email-already-exists" in error_msg:
+            raise HTTPException(status_code=400, detail="The email address is already in use by another account.")
+        raise HTTPException(status_code=500, detail=f"Failed to create doctor account: {error_msg}")
 
 
 @router.get("/hospital/doctors")

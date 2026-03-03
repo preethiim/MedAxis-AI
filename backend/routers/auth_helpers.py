@@ -91,7 +91,7 @@ class RegisterRequest(BaseModel):
     name: str = ""
     email: str
     password: str
-    role: str
+    role: str = "patient"   # always overridden server-side to 'patient' on /auth/register
     healthId: str = ""
     employeeId: str = ""
     height: str = ""
@@ -180,6 +180,13 @@ class SuperAdminCreateUserRequest(BaseModel):
     email: str
     password: str
     role: str  # "patient" | "doctor" | "hospital"
+
+
+class CreateDoctorRequest(BaseModel):
+    """Used by hospitals to create a new doctor account."""
+    name: str = ""
+    email: str
+    password: str
 
 
 # ─── Shared Constants ─────────────────────────────────────────────────────────

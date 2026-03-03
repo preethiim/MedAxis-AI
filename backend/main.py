@@ -54,46 +54,56 @@ from routers.auth_helpers import RegisterRequest
 @app.post("/auth/register")
 def register_user(req: RegisterRequest):
     """
-    Registers a user directly via FastAPI to bypass Firebase Cloud Functions
-    HTTP limitations. Handles Auth user creation, custom claims, and Firestore init.
+    Public self-registration endpoint — patients ONLY.
+    - Doctor accounts must be created by a hospital via POST /hospital/create-doctor.
+    - Hospital accounts must be created by a superadmin via POST /superadmin/create-user.
+    Role is enforced server-side regardless of what the client sends.
     """
     from fastapi import HTTPException
 
-    if not req.email or not req.password or not req.role:
-        raise HTTPException(status_code=400, detail="Missing essential fields: email, password, or role.")
-    if req.role not in ["patient", "doctor", "hospital", "superadmin"]:
-        raise HTTPException(status_code=400, detail="Invalid role provided.")
+    if not req.email or not req.password:
+        raise HTTPException(status_code=400, detail="Missing essential fields: email and password are required.")
+
+    # ── Server-side role gate ──────────────────────────────────────────────────
+    if req.role in ("doctor", "hospital", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Self-registration is not allowed for this role. "
+                "Doctor accounts are created by hospitals. "
+                "Hospital accounts are created by super admins."
+            ),
+        )
+
+    # Only patients reach here
+    if req.role != "patient":
+        raise HTTPException(status_code=400, detail="Invalid role. Only 'patient' self-registration is allowed.")
 
     try:
         from firebase_admin import auth
         user_record = auth.create_user(email=req.email, password=req.password, display_name=req.name)
-        auth.set_custom_user_claims(user_record.uid, {"role": req.role})
+        auth.set_custom_user_claims(user_record.uid, {"role": "patient"})
 
         db = firestore.client()
+        generated_health_id = "PAT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         user_data = {
             "uid": user_record.uid,
-            "role": req.role,
+            "role": "patient",
             "email": req.email,
             "createdAt": firestore.SERVER_TIMESTAMP,
+            "healthId": req.healthId if req.healthId else generated_health_id,
+            "height": req.height,
+            "weight": req.weight,
+            "bmi": req.bmi,
         }
         if req.name:
             user_data["name"] = req.name
-        if req.role == "patient":
-            generated_health_id = "PAT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-            user_data["healthId"] = req.healthId if req.healthId else generated_health_id
-            user_data["height"] = req.height
-            user_data["weight"] = req.weight
-            user_data["bmi"] = req.bmi
-        elif req.role == "hospital":
-            user_data["employeeId"] = req.employeeId
-        elif req.role == "doctor":
-            user_data["doctorId"] = "DOC-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
         db.collection("users").document(user_record.uid).set(user_data)
-        return {"success": True, "uid": user_record.uid, "message": f"User {req.role} registered successfully"}
+        return {"success": True, "uid": user_record.uid, "message": "Patient account registered successfully"}
     except Exception as e:
         error_msg = str(e)
-        if "EMAIL_EXISTS" in error_msg:
+        if "EMAIL_EXISTS" in error_msg or "email-already-exists" in error_msg:
             raise HTTPException(status_code=400, detail="The email address is already in use by another account.")
         raise HTTPException(status_code=500, detail=f"Registration failed: {error_msg}")
 
