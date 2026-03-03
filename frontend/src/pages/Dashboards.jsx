@@ -344,18 +344,45 @@ export const HospitalDashboard = () => {
     const { currentUser, logout } = useAuth();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeTab, setActiveTab] = useState('lookup');
+    const [activeTab, setActiveTab] = useState('overview');
 
+    const [stats, setStats] = useState(null);
+    const [doctors, setDoctors] = useState([]);
+    const [patients, setPatients] = useState([]);
+
+    // We can also let the hospital perform unrestricted lookups if they want
     const [searchId, setSearchId] = useState('');
     const [searchResult, setSearchResult] = useState(null);
     const [searchError, setSearchError] = useState('');
 
-    const [assignUid, setAssignUid] = useState('');
-    const [assignRole, setAssignRole] = useState('doctor');
-    const [assignLoading, setAssignLoading] = useState(false);
-    const [assignMessage, setAssignMessage] = useState(null);
+    useEffect(() => {
+        const fetchHospitalData = async () => {
+            if (!currentUser) return;
+            setLoading(true);
+            try {
+                const token = await currentUser.getIdToken();
+                const headers = { 'Authorization': `Bearer ${token}` };
 
-    useEffect(() => { setLoading(false); }, []);
+                const [statsRes, docsRes, patientsRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/hospital/stats`, { headers }),
+                    fetch(`${API_BASE_URL}/hospital/doctors`, { headers }),
+                    fetch(`${API_BASE_URL}/hospital/patients`, { headers })
+                ]);
+
+                if (!statsRes.ok) throw new Error((await statsRes.json()).detail || 'Failed to fetch stats');
+                setStats(await statsRes.json());
+
+                if (docsRes.ok) setDoctors((await docsRes.json()).doctors || []);
+                if (patientsRes.ok) setPatients((await patientsRes.json()).patients || []);
+
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchHospitalData();
+    }, [currentUser]);
 
     const handleSearch = async () => {
         if (!searchId.trim()) return;
@@ -371,28 +398,18 @@ export const HospitalDashboard = () => {
         } catch (err) { setSearchError(err.message); }
     };
 
-    const handleAssignRole = async () => {
-        if (!assignUid.trim()) return;
-        setAssignLoading(true); setAssignMessage(null);
-        try {
-            const token = await currentUser.getIdToken();
-            const res = await fetch(`${API_BASE_URL}/admin/assign-role`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ uid: assignUid, role: assignRole })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Failed');
-            setAssignMessage({ type: 'success', text: data.message || 'Role assigned!' });
-            setAssignUid('');
-        } catch (err) { setAssignMessage({ type: 'error', text: err.message }); }
-        finally { setAssignLoading(false); }
-    };
-
     const tabs = [
-        { id: 'lookup', label: '🔍 Patient Lookup' },
-        { id: 'manage', label: '👥 Manage Staff' },
+        { id: 'overview', label: '📊 Overview' },
+        { id: 'doctors', label: '🩺 Our Doctors' },
+        { id: 'patients', label: '👥 Our Patients' },
+        { id: 'lookup', label: '🔍 Patient Lookup' }
     ];
+
+    const cardStyle = {
+        background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '12px',
+        border: '1px solid var(--border-color)', textAlign: 'center'
+    };
+    const statValue = { fontSize: '2.5rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.25rem' };
 
     return (
         <div className="dashboard">
@@ -416,47 +433,116 @@ export const HospitalDashboard = () => {
                 ))}
             </div>
 
-            {/* Patient Lookup */}
-            {activeTab === 'lookup' && (
-                <div className="glass-panel">
-                    <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={20} /> Centralized Patient Lookup</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>Search any patient from any hospital by their Health ID.</p>
-                    <div className="search-bar" style={{ marginBottom: '1rem' }}>
-                        <input type="text" className="form-input" placeholder="e.g. PAT-A1B2C3" value={searchId} onChange={e => setSearchId(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} style={{ margin: 0, flex: 1 }} />
-                        <button className="btn-primary" style={{ margin: 0, width: 'auto' }} onClick={handleSearch}>Search</button>
-                    </div>
-                    {searchError && <div style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem' }}>{searchError}</div>}
-                    {searchResult && (
-                        <div className="report-card">
-                            <h4 style={{ color: 'var(--success)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={16} /> Patient Found</h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
-                                {[['Name', searchResult.patient.name], ['Health ID', searchResult.patient.healthId], ['Email', searchResult.patient.email], ['BMI', searchResult.patient.bmi || '—']].map(([l, v], i) => (
-                                    <div key={i} style={{ padding: '0.5rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{l}</div>
-                                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{v}</div>
-                                    </div>
-                                ))}
+            {error && <div className="error-msg"><AlertCircle size={16} /> {error}</div>}
+
+            {loading ? (
+                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Loading hospital data...</p>
+            ) : (
+                <>
+                    {/* Overview */}
+                    {activeTab === 'overview' && stats && (
+                        <div className="glass-panel" style={{ padding: '2rem' }}>
+                            <h3 style={{ marginBottom: '1.5rem' }}>Hospital Scope Data</h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
+                                <div style={cardStyle}><div style={statValue}>{stats.total_doctors}</div><div style={{ color: 'var(--text-muted)' }}>Affiliated Doctors</div></div>
+                                <div style={cardStyle}><div style={{ ...statValue, color: '#ec4899' }}>{stats.total_patients}</div><div style={{ color: 'var(--text-muted)' }}>Active Patients</div></div>
+                                <div style={cardStyle}><div style={{ ...statValue, color: stats.high_risk_alerts > 0 ? '#ef4444' : '#10b981' }}>{stats.high_risk_alerts}</div><div style={{ color: 'var(--text-muted)' }}>High-Risk Alerts</div></div>
                             </div>
-                            {searchResult.reports.length > 0 && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{searchResult.reports.length} report(s) on file</div>}
                         </div>
                     )}
-                </div>
-            )}
 
-            {/* Manage Staff */}
-            {activeTab === 'manage' && (
-                <div className="glass-panel">
-                    <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><UserPlus size={20} /> Assign Role</h3>
-                    <div className="form-group"><label className="form-label">User UID</label><input className="form-input" placeholder="Enter user UID" value={assignUid} onChange={e => setAssignUid(e.target.value)} /></div>
-                    <div className="form-group"><label className="form-label">Role</label>
-                        <select className="form-input" value={assignRole} onChange={e => setAssignRole(e.target.value)}>
-                            <option value="doctor">Doctor</option><option value="patient">Patient</option><option value="hospital">Hospital</option>
-                        </select>
-                    </div>
-                    <button className="btn-primary" onClick={handleAssignRole} disabled={assignLoading}>{assignLoading ? 'Assigning...' : 'Assign Role'}</button>
-                    {assignMessage && <div style={{ marginTop: '0.75rem', color: assignMessage.type === 'success' ? 'var(--success)' : 'var(--danger)', fontSize: '0.85rem' }}>{assignMessage.text}</div>}
-                </div>
+                    {/* Doctors */}
+                    {activeTab === 'doctors' && (
+                        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                            <h3 style={{ marginBottom: '1rem', color: '#10b981' }}>Affiliated Doctors ({doctors.length})</h3>
+                            {doctors.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No doctors currently affiliated.</p> : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Name</th>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Email</th>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Doctor ID</th>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Emp ID</th>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Active Patients</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {doctors.map(d => (
+                                                <tr key={d.uid} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                                    <td style={{ padding: '0.75rem' }}>{d.name || '—'}</td>
+                                                    <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{d.email}</td>
+                                                    <td style={{ padding: '0.75rem' }}><span style={{ fontFamily: 'monospace', color: '#60a5fa' }}>{d.doctorId || '—'}</span></td>
+                                                    <td style={{ padding: '0.75rem' }}><span style={{ fontFamily: 'monospace', color: '#f472b6' }}>{d.employeeId || '—'}</span></td>
+                                                    <td style={{ padding: '0.75rem', fontWeight: 600, color: '#10b981' }}>{d.patient_count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Patients */}
+                    {activeTab === 'patients' && (
+                        <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                            <h3 style={{ marginBottom: '1rem', color: '#ec4899' }}>Patients Under Care ({patients.length})</h3>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>Only basic profile information is accessible here. Direct access to clinical reports is restricted.</p>
+                            {patients.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No active patients found for your doctors.</p> : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Name</th>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Email</th>
+                                                <th style={{ textAlign: 'left', padding: '0.75rem', color: 'var(--text-muted)' }}>Health ID</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {patients.map(p => (
+                                                <tr key={p.uid} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                                    <td style={{ padding: '0.75rem' }}>{p.name || '—'}</td>
+                                                    <td style={{ padding: '0.75rem', color: 'var(--text-muted)' }}>{p.email}</td>
+                                                    <td style={{ padding: '0.75rem' }}><span style={{ fontFamily: 'monospace', color: '#ec4899', background: 'rgba(236,72,153,0.1)', padding: '2px 6px', borderRadius: '4px' }}>{p.healthId || '—'}</span></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Patient Lookup */}
+                    {activeTab === 'lookup' && (
+                        <div className="glass-panel">
+                            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={20} /> Patient Lookup</h3>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>Search any patient by their Health ID. Hospitals have unrestricted lookup capabilities.</p>
+                            <div className="search-bar" style={{ marginBottom: '1rem' }}>
+                                <input type="text" className="form-input" placeholder="e.g. PAT-A1B2C3" value={searchId} onChange={e => setSearchId(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} style={{ margin: 0, flex: 1 }} />
+                                <button className="btn-primary" style={{ margin: 0, width: 'auto' }} onClick={handleSearch}>Search</button>
+                            </div>
+                            {searchError && <div style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem' }}>{searchError}</div>}
+                            {searchResult && (
+                                <div className="report-card">
+                                    <h4 style={{ color: 'var(--success)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={16} /> Patient Found</h4>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
+                                        {[['Name', searchResult.patient.name], ['Health ID', searchResult.patient.healthId], ['Email', searchResult.patient.email], ['BMI', searchResult.patient.bmi || '—']].map(([l, v], i) => (
+                                            <div key={i} style={{ padding: '0.5rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>{l}</div>
+                                                <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{v}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {searchResult.reports.length > 0 && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{searchResult.reports.length} report(s) on file</div>}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );
 };
+
