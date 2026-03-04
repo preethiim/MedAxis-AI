@@ -440,8 +440,13 @@ def get_patient_me(uid: str = Depends(get_current_patient_uid)):
         return {
             "uid": uid,
             "name": data.get("name", ""),
+            "firstName": data.get("firstName", ""),
+            "lastName": data.get("lastName", ""),
+            "gender": data.get("gender", ""),
+            "birthDate": data.get("birthDate", ""),
             "email": data.get("email", ""),
             "healthId": data.get("healthId", ""),
+            "profileImage": data.get("profileImage", ""),
             "height": data.get("height", ""),
             "weight": data.get("weight", ""),
             "bmi": data.get("bmi", ""),
