@@ -185,6 +185,11 @@ const Register = () => {
                     Already have an account? <Link to="/login" className="link">Sign in</Link>
                 </p>
             </div>
+
+            {/* Footer */}
+            <footer style={{ marginTop: '2rem', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+                Created by Preethi M, Vinuthashree Gowd & Yashavanthagowda R G — BNM Institute of Technology
+            </footer>
         </div>
     );
 };

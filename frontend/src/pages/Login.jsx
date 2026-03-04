@@ -238,8 +238,11 @@ const Login = () => {
                 </p>
             </div>
 
-            {/* Public Legal Footer for Google Verification */}
+            {/* Footer */}
             <footer style={{ marginTop: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                <div style={{ marginBottom: '0.5rem', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+                    Created by Preethi M, Vinuthashree Gowd & Yashavanthagowda R G — BNM Institute of Technology
+                </div>
                 By logging in, you agree to our <Link to="/privacy" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Privacy Policy</Link>
             </footer>
         </div>
