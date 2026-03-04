@@ -56,6 +56,15 @@ const Login = () => {
         provider.addScope('https://www.googleapis.com/auth/fitness.activity.read');
         try {
             const result = await signInWithPopup(auth, provider);
+
+            // Enforce Email Verification Rule
+            if (result.user && !result.user.emailVerified) {
+                await auth.signOut();
+                setError('Google Sign-In is only allowed for users with a verified email address. Please verify your Google account email first.');
+                setIsSubmitting(false);
+                return;
+            }
+
             // Capture Google Access Token to query Google REST APIs later
             const credential = GoogleAuthProvider.credentialFromResult(result);
             if (credential && credential.accessToken) {

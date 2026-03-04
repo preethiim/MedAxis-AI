@@ -13,6 +13,7 @@ from routers.auth_helpers import (
     DoctorCommentRequest,
     AlertResolveRequest,
     PrescriptionRequest,
+    DoctorProfileUpdateRequest,
 )
 
 router = APIRouter()
@@ -185,3 +186,30 @@ def add_prescription(payload: PrescriptionRequest, doctor_uid: str = Depends(get
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create prescription: {str(e)}")
+
+@router.put("/doctor/profile")
+def update_doctor_profile(payload: DoctorProfileUpdateRequest, doctor_uid: str = Depends(get_current_doctor_uid)):
+    """
+    Updates the authenticated doctor's profile fields.
+    """
+    try:
+        db = firestore.client()
+        doctor_ref = db.collection("users").document(doctor_uid)
+        
+        updates = {}
+        if payload.specialization is not None:
+            updates["specialization"] = payload.specialization
+        if payload.qualification is not None:
+            updates["qualification"] = payload.qualification
+        if payload.yearsOfExperience is not None:
+            updates["yearsOfExperience"] = payload.yearsOfExperience
+        if payload.bio is not None:
+            updates["bio"] = payload.bio
+            
+        if updates:
+            updates["updatedAt"] = firestore.SERVER_TIMESTAMP
+            doctor_ref.update(updates)
+            
+        return {"message": "Profile updated successfully.", "updates": updates}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")

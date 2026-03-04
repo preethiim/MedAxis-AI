@@ -161,17 +161,19 @@ class RegisterRequest(BaseModel):
 
 class PatientRequest(BaseModel):
     uid: str
-    firstName: str = ""
-    lastName: str = ""
-    gender: str = ""
-    birthDate: str = ""
-    healthId: str = ""
+    firstName: Optional[str] = ""
+    lastName: Optional[str] = ""
+    gender: Optional[str] = ""
+    birthDate: Optional[str] = ""
+    healthId: Optional[str] = ""
 
 
 class VitalsRequest(BaseModel):
     uid: str
-    height_cm: float
-    weight_kg: float
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    heartRate: Optional[float] = None
+    oxygen: Optional[float] = None
 
 
 class LabValues(BaseModel):
@@ -247,6 +249,12 @@ class CreateDoctorRequest(BaseModel):
     name: str = ""
     email: str
     password: str
+
+class DoctorProfileUpdateRequest(BaseModel):
+    specialization: Optional[str] = None
+    qualification: Optional[str] = None
+    yearsOfExperience: Optional[int] = None
+    bio: Optional[str] = None
 
 
 # ─── Shared Constants ─────────────────────────────────────────────────────────

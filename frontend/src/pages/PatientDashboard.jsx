@@ -13,8 +13,7 @@ const PatientDashboard = () => {
     const [activeTab, setActiveTab] = useState('my reports');
 
     const [profile, setProfile] = useState({ firstName: '', lastName: '', gender: '', birthDate: '' });
-    const [vitals, setVitals] = useState({ height_cm: '', weight_kg: '' });
-    const [labs, setLabs] = useState({ hemoglobin: '', vitaminD: '', glucose: '' });
+    const [vitals, setVitals] = useState({ height_cm: '', weight_kg: '', heartRate: '', oxygen: '' });
     const [reportFile, setReportFile] = useState(null);
 
     const [loading, setLoading] = useState(false);
@@ -52,12 +51,20 @@ const PatientDashboard = () => {
 
                 const vitalsData = await vitalsRes.json();
                 if (vitalsRes.ok && vitalsData.vitals) {
-                    const bmiHistory = vitalsData.vitals
-                        .filter(obs => obs?.code?.coding?.[0]?.code === "39156-5")
-                        .map(obs => ({ date: new Date(obs.effectiveDateTime).toLocaleDateString(), timestamp: new Date(obs.effectiveDateTime).getTime(), BMI: obs.valueQuantity.value }))
-                        .sort((a, b) => a.timestamp - b.timestamp);
-                    const cleanBmi = bmiHistory.filter((v, i, a) => a.findIndex(t => t.timestamp === v.timestamp) === i);
-                    setBmiData(cleanBmi);
+                    const mappedData = {};
+                    vitalsData.vitals.forEach(obs => {
+                        const dateStr = new Date(obs.effectiveDateTime).toLocaleDateString();
+                        const timeMs = new Date(obs.effectiveDateTime).getTime();
+                        if (!mappedData[dateStr]) mappedData[dateStr] = { date: dateStr, timestamp: timeMs };
+
+                        const code = obs?.code?.coding?.[0]?.code;
+                        const val = obs?.valueQuantity?.value;
+                        if (code === "39156-5") mappedData[dateStr].BMI = val;
+                        if (code === "8867-4") mappedData[dateStr].heartRate = val;
+                        if (code === "2708-6") mappedData[dateStr].oxygen = val;
+                    });
+                    const trendArray = Object.values(mappedData).sort((a, b) => a.timestamp - b.timestamp);
+                    setBmiData(trendArray);
                 }
 
                 const stepsData = await stepsRes.json();
@@ -98,23 +105,20 @@ const PatientDashboard = () => {
     const submitVitals = async (e) => {
         e.preventDefault(); setLoading(true); setError(null);
         try {
-            const res = await fetch(`${FASTAPI_URL}/fhir/observation/vitals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: currentUser.uid, height_cm: parseFloat(vitals.height_cm), weight_kg: parseFloat(vitals.weight_kg) }) });
+            const payload = {
+                uid: currentUser.uid,
+                height_cm: vitals.height_cm ? parseFloat(vitals.height_cm) : null,
+                weight_kg: vitals.weight_kg ? parseFloat(vitals.weight_kg) : null,
+                heartRate: vitals.heartRate ? parseFloat(vitals.heartRate) : null,
+                oxygen: vitals.oxygen ? parseFloat(vitals.oxygen) : null
+            };
+            const res = await fetch(`${FASTAPI_URL}/fhir/observation/vitals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'Failed');
             setResults(p => ({ ...p, vitals: data.data }));
         } catch (err) { setError(err.message); } finally { setLoading(false); }
     };
 
-    const submitLabs = async (e) => {
-        e.preventDefault(); setLoading(true); setError(null);
-        try {
-            const payload = { uid: currentUser.uid, labValues: { hemoglobin: labs.hemoglobin ? parseFloat(labs.hemoglobin) : null, vitaminD: labs.vitaminD ? parseFloat(labs.vitaminD) : null, glucose: labs.glucose ? parseFloat(labs.glucose) : null } };
-            const res = await fetch(`${FASTAPI_URL}/fhir/diagnostic-report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Failed');
-            setResults(p => ({ ...p, labs: data.data }));
-        } catch (err) { setError(err.message); } finally { setLoading(false); }
-    };
 
     const handleGoogleFitSync = async () => {
         setSyncLoading(true);
@@ -199,8 +203,7 @@ const PatientDashboard = () => {
         { id: 'steps', label: '🏃 Steps', icon: <Footprints size={14} /> },
         { id: 'trends', label: '📈 Trends', icon: <TrendingUp size={14} /> },
         { id: 'profile', label: '👤 Profile', icon: <User size={14} /> },
-        { id: 'vitals', label: '💓 Vitals', icon: <Activity size={14} /> },
-        { id: 'labs', label: '🧪 Labs', icon: <FileText size={14} /> },
+        { id: 'vitals', label: '💓 Vitals', icon: <Activity size={14} /> }
     ];
 
     return (
@@ -439,9 +442,12 @@ const PatientDashboard = () => {
                                         <LineChart data={bmiData}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                                             <XAxis dataKey="date" stroke="var(--text-dim)" fontSize={11} />
-                                            <YAxis stroke="var(--text-dim)" fontSize={11} domain={['auto', 'auto']} />
+                                            <YAxis yAxisId="left" stroke="var(--text-dim)" fontSize={11} domain={['auto', 'auto']} />
+                                            <YAxis yAxisId="right" orientation="right" stroke="var(--text-dim)" fontSize={11} domain={['auto', 'auto']} />
                                             <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px' }} />
-                                            <Line type="monotone" dataKey="BMI" stroke="var(--primary)" strokeWidth={2} dot={{ fill: 'var(--primary)', r: 4 }} />
+                                            <Line yAxisId="left" type="monotone" dataKey="BMI" stroke="var(--primary)" strokeWidth={2} dot={{ fill: 'var(--primary)', r: 4 }} name="BMI" />
+                                            <Line yAxisId="left" type="monotone" dataKey="heartRate" stroke="var(--warning)" strokeWidth={2} dot={{ fill: 'var(--warning)', r: 4 }} name="Heart Rate (bpm)" />
+                                            <Line yAxisId="right" type="monotone" dataKey="oxygen" stroke="var(--accent)" strokeWidth={2} dot={{ fill: 'var(--accent)', r: 4 }} name="Oxygen (%)" />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -485,24 +491,15 @@ const PatientDashboard = () => {
                     {activeTab === 'vitals' && (
                         <form onSubmit={submitVitals}>
                             <h3 style={{ fontSize: '1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Activity size={20} /> Submit Vitals</h3>
-                            <div className="form-group"><label className="form-label">Height (cm)</label><input className="form-input" type="number" step="0.1" placeholder="e.g. 175.5" value={vitals.height_cm} onChange={e => setVitals({ ...vitals, height_cm: e.target.value })} required /></div>
-                            <div className="form-group"><label className="form-label">Weight (kg)</label><input className="form-input" type="number" step="0.1" placeholder="e.g. 70.2" value={vitals.weight_kg} onChange={e => setVitals({ ...vitals, weight_kg: e.target.value })} required /></div>
+                            <div className="form-group"><label className="form-label">Height (cm)</label><input className="form-input" type="number" step="0.1" placeholder="e.g. 175.5" value={vitals.height_cm} onChange={e => setVitals({ ...vitals, height_cm: e.target.value })} /></div>
+                            <div className="form-group"><label className="form-label">Weight (kg)</label><input className="form-input" type="number" step="0.1" placeholder="e.g. 70.2" value={vitals.weight_kg} onChange={e => setVitals({ ...vitals, weight_kg: e.target.value })} /></div>
+                            <div className="form-group"><label className="form-label">Heart Rate (bpm)</label><input className="form-input" type="number" placeholder="e.g. 72" value={vitals.heartRate} onChange={e => setVitals({ ...vitals, heartRate: e.target.value })} /></div>
+                            <div className="form-group"><label className="form-label">Oxygen SpO2 (%)</label><input className="form-input" type="number" placeholder="e.g. 98" value={vitals.oxygen} onChange={e => setVitals({ ...vitals, oxygen: e.target.value })} /></div>
                             <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Calculate & Save Vitals'}</button>
                             {results.vitals && <div style={{ marginTop: '1rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}><CheckCircle size={16} /> Saved Successfully</div>}
                         </form>
                     )}
 
-                    {/* LABS */}
-                    {activeTab === 'labs' && (
-                        <form onSubmit={submitLabs}>
-                            <h3 style={{ fontSize: '1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><FileText size={20} /> Lab Results</h3>
-                            <div className="form-group"><label className="form-label">Hemoglobin (g/dL)</label><input className="form-input" type="number" step="0.1" placeholder="e.g. 14.5" value={labs.hemoglobin} onChange={e => setLabs({ ...labs, hemoglobin: e.target.value })} /></div>
-                            <div className="form-group"><label className="form-label">Vitamin D (ng/mL)</label><input className="form-input" type="number" step="0.1" placeholder="e.g. 30" value={labs.vitaminD} onChange={e => setLabs({ ...labs, vitaminD: e.target.value })} /></div>
-                            <div className="form-group"><label className="form-label">Glucose (mg/dL)</label><input className="form-input" type="number" step="0.1" placeholder="e.g. 95" value={labs.glucose} onChange={e => setLabs({ ...labs, glucose: e.target.value })} /></div>
-                            <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Generate Lab Report'}</button>
-                            {results.labs && <div style={{ marginTop: '1rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}><CheckCircle size={16} /> Saved Successfully</div>}
-                        </form>
-                    )}
                 </div>
             </div>
         </div>

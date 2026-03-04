@@ -15,7 +15,7 @@ env/
 .venv/
 build/
 develop-eggs/
-dist/
+# dist/
 downloads/
 eggs/
 .eggs/
@@ -46,5 +46,5 @@ ui-debug.log
 # Note: we do NOT ignore firebase.json or .firebaserc as these are needed for deployment
 
 # Frontend Build
-frontend/dist/
-frontend/build/
+# frontend/dist/
+# frontend/build/

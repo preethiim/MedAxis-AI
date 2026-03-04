@@ -20,6 +20,12 @@ export const DoctorDashboard = () => {
     const [searchError, setSearchError] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
     const [profileImage, setProfileImage] = useState(null);
+    const [profile, setProfile] = useState(null);
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [profileForm, setProfileForm] = useState({
+        specialization: '', qualification: '', yearsOfExperience: '', bio: ''
+    });
+    const [updateProfileLoading, setUpdateProfileLoading] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -30,11 +36,45 @@ export const DoctorDashboard = () => {
                 if (res.ok) {
                     const data = await res.json();
                     setProfileImage(data.profileImage || null);
+                    setProfile(data);
+                    setProfileForm({
+                        specialization: data.specialization || '',
+                        qualification: data.qualification || '',
+                        yearsOfExperience: data.yearsOfExperience || '',
+                        bio: data.bio || ''
+                    });
                 }
             } catch (err) { console.error('Failed to fetch profile:', err); }
         };
         fetchProfile();
     }, [currentUser]);
+
+    const handleProfileSubmit = async (e) => {
+        e.preventDefault();
+        setUpdateProfileLoading(true);
+        try {
+            const token = await currentUser.getIdToken();
+            const res = await fetch(`${API_BASE_URL}/doctor/profile`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    specialization: profileForm.specialization,
+                    qualification: profileForm.qualification,
+                    yearsOfExperience: parseInt(profileForm.yearsOfExperience) || 0,
+                    bio: profileForm.bio
+                })
+            });
+            if (!res.ok) throw new Error('Failed to update profile');
+            const data = await res.json();
+            setProfile(prev => ({ ...prev, ...data.updates }));
+            setIsEditingProfile(false);
+            alert('Profile updated successfully!');
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            setUpdateProfileLoading(false);
+        }
+    };
 
     // Prescription State
     const [showPrescribeModal, setShowPrescribeModal] = useState(false);
@@ -324,13 +364,71 @@ export const DoctorDashboard = () => {
 
             {/* Profile */}
             {activeTab === 'profile' && (
-                <div className="glass-panel" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '400px', margin: '0 auto' }}>
-                    <ProfileImageUpload
-                        currentImage={profileImage}
-                        onImageUpdate={url => setProfileImage(url)}
-                    />
-                    <h3 style={{ marginTop: '1.5rem', marginBottom: '0.25rem' }}>{currentUser?.displayName || 'Doctor'}</h3>
-                    <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
+                <div className="glass-panel" style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '2rem' }}>
+                        <ProfileImageUpload
+                            currentImage={profileImage}
+                            onImageUpdate={url => setProfileImage(url)}
+                        />
+                        <h3 style={{ marginTop: '1.5rem', marginBottom: '0.25rem' }}>{profile?.name || currentUser?.displayName || 'Doctor'}</h3>
+                        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
+                        {profile?.employeeId && (
+                            <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                <span className="badge" style={{ background: 'rgba(96,165,250,0.1)', color: '#60a5fa', fontFamily: 'monospace' }}>🎫 {profile.employeeId}</span>
+                                {profile?.hospitalId && <span className="badge" style={{ background: 'rgba(236,72,153,0.1)', color: '#ec4899', fontFamily: 'monospace' }}>🏥 {profile.hospitalId}</span>}
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h3 style={{ fontSize: '1.1rem' }}>Professional Details</h3>
+                        <button className="btn-outline" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }} onClick={() => setIsEditingProfile(!isEditingProfile)}>
+                            {isEditingProfile ? 'Cancel' : 'Edit Profile'}
+                        </button>
+                    </div>
+
+                    {isEditingProfile ? (
+                        <form onSubmit={handleProfileSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label className="form-label">Specialization</label>
+                                <input type="text" className="form-input" value={profileForm.specialization} onChange={e => setProfileForm(p => ({ ...p, specialization: e.target.value }))} placeholder="e.g. Cardiology" />
+                            </div>
+                            <div>
+                                <label className="form-label">Qualification</label>
+                                <input type="text" className="form-input" value={profileForm.qualification} onChange={e => setProfileForm(p => ({ ...p, qualification: e.target.value }))} placeholder="e.g. MBBS, MD" />
+                            </div>
+                            <div>
+                                <label className="form-label">Years of Experience</label>
+                                <input type="number" className="form-input" value={profileForm.yearsOfExperience} onChange={e => setProfileForm(p => ({ ...p, yearsOfExperience: e.target.value }))} placeholder="e.g. 10" />
+                            </div>
+                            <div>
+                                <label className="form-label">Bio</label>
+                                <textarea className="form-input" rows="4" value={profileForm.bio} onChange={e => setProfileForm(p => ({ ...p, bio: e.target.value }))} placeholder="Brief professional background..."></textarea>
+                            </div>
+                            <button type="submit" className="btn-primary" disabled={updateProfileLoading} style={{ marginTop: '0.5rem' }}>
+                                {updateProfileLoading ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </form>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div style={{ padding: '1rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Specialization</div>
+                                <div>{profile?.specialization || 'Not specified'}</div>
+                            </div>
+                            <div style={{ padding: '1rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Qualification</div>
+                                <div>{profile?.qualification || 'Not specified'}</div>
+                            </div>
+                            <div style={{ padding: '1rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Years of Experience</div>
+                                <div>{profile?.yearsOfExperience ? `${profile.yearsOfExperience} years` : 'Not specified'}</div>
+                            </div>
+                            <div style={{ padding: '1rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>Bio</div>
+                                <div style={{ whiteSpace: 'pre-wrap' }}>{profile?.bio || 'No bio available.'}</div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

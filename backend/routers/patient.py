@@ -42,20 +42,35 @@ router = APIRouter()
 @router.post("/fhir/patient")
 def create_fhir_patient(patient: PatientRequest):
     """
-    Converts a generic patient payload to a FHIR R4 Patient resource
-    and saves it to the `fhir_patients` Firestore collection.
+    Converts a generic patient payload to a FHIR R4 Patient resource,
+    saves it to the `fhir_patients` Firestore collection, AND
+    updates the core `users` profile for UI persistence.
     """
     try:
+        db = firestore.client()
+        
+        # 1. Update the UI-facing `users` collection so data persists on refresh
+        user_updates = {
+            "firstName": patient.firstName,
+            "lastName": patient.lastName,
+            "name": f"{patient.firstName} {patient.lastName}".strip() or "Patient",
+            "gender": patient.gender,
+            "birthDate": patient.birthDate,
+            "updatedAt": firestore.SERVER_TIMESTAMP
+        }
+        db.collection("users").document(patient.uid).set(user_updates, merge=True)
+
+        # 2. Build and save the FHIR R4 Resource
         fhir_patient_json = build_fhir_patient(
             uid=patient.uid,
             first_name=patient.firstName,
             last_name=patient.lastName,
             gender=patient.gender,
             birth_date=patient.birthDate,
-            health_id=patient.healthId,
+            health_id=patient.healthId or "",
         )
-        db = firestore.client()
         db.collection("fhir_patients").document(patient.uid).set(fhir_patient_json)
+        
         return {"message": "FHIR Patient registered successfully", "data": fhir_patient_json}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create FHIR Patient: {str(e)}")
@@ -64,20 +79,29 @@ def create_fhir_patient(patient: PatientRequest):
 @router.post("/fhir/observation/vitals")
 def create_fhir_vitals(vitals: VitalsRequest):
     """
-    Creates FHIR Observation resources for Height, Weight, and calculated BMI.
+    Creates FHIR Observation resources for Height, Weight, BMI, Heart Rate, and Oxygen.
     Stores them in the `fhir_observations/{uid}/vitals` subcollection.
     """
     try:
-        bmi = calculate_bmi(vitals.height_cm, vitals.weight_kg)
-        height_obs = build_fhir_observation(vitals.uid, "8302-2", "Body Height", vitals.height_cm, "cm", "cm")
-        weight_obs = build_fhir_observation(vitals.uid, "29463-7", "Body Weight", vitals.weight_kg, "kg", "kg")
-        bmi_obs = build_fhir_observation(vitals.uid, "39156-5", "Body Mass Index", bmi, "kg/m2", "kg/m2")
-        observations = [height_obs, weight_obs, bmi_obs]
+        observations = []
+        
+        if vitals.height_cm is not None and vitals.weight_kg is not None:
+            bmi = calculate_bmi(vitals.height_cm, vitals.weight_kg)
+            observations.append(build_fhir_observation(vitals.uid, "8302-2", "Body Height", vitals.height_cm, "cm", "cm"))
+            observations.append(build_fhir_observation(vitals.uid, "29463-7", "Body Weight", vitals.weight_kg, "kg", "kg"))
+            observations.append(build_fhir_observation(vitals.uid, "39156-5", "Body Mass Index", bmi, "kg/m2", "kg/m2"))
+            
+        if vitals.heartRate is not None:
+            observations.append(build_fhir_observation(vitals.uid, "8867-4", "Heart rate", vitals.heartRate, "/min", "/min"))
+            
+        if vitals.oxygen is not None:
+            observations.append(build_fhir_observation(vitals.uid, "59408-5", "Oxygen saturation in Arterial blood by Pulse oximetry", vitals.oxygen, "%", "%"))
 
         db = firestore.client()
-        vitals_ref = db.collection("fhir_observations").document(vitals.uid).collection("vitals")
-        for obs in observations:
-            vitals_ref.document(obs["id"]).set(obs)
+        if observations:
+            vitals_ref = db.collection("fhir_observations").document(vitals.uid).collection("vitals")
+            for obs in observations:
+                vitals_ref.document(obs["id"]).set(obs)
 
         return {"message": "FHIR Vitals Observations created successfully", "data": observations}
     except Exception as e:

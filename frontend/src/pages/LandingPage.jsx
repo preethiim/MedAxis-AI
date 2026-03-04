@@ -71,6 +71,9 @@ export const LandingPage = () => {
 
             {/* Footer */}
             <footer style={{ padding: '2rem', textAlign: 'center', borderTop: '1px solid var(--border-color)', background: 'var(--input-bg)' }}>
+                <div style={{ marginBottom: '1.5rem', color: 'var(--text-main)', fontSize: '0.95rem', fontWeight: 500 }}>
+                    Created by Preethi M, Vinuthashree Gowd, and Yashavanthagowda R G of BNMIT
+                </div>
                 <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: '1rem' }}>&copy; 2026 MedAxis AI. All rights reserved.</p>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', fontSize: '0.85rem' }}>
                     <Link to="/privacy" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Privacy Policy</Link>
