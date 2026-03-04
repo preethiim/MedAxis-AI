@@ -74,7 +74,6 @@ const PatientDashboard = () => {
         };
         fetchDashboardData();
 
-        // Fetch patient's own profile (to get healthId)
         const fetchProfile = async () => {
             if (!currentUser) return;
             try {
@@ -84,11 +83,24 @@ const PatientDashboard = () => {
                     const data = await res.json();
                     setHealthId(data.healthId || '');
                     setProfileImage(data.profileImage || null);
+                    setProfile({
+                        firstName: data.firstName || '',
+                        lastName: data.lastName || '',
+                        gender: data.gender || '',
+                        birthDate: data.birthDate || ''
+                    });
                 }
             } catch (err) { console.error('Failed to fetch patient profile:', err); }
         };
         fetchProfile();
     }, [currentUser]);
+
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return "Good morning";
+        if (hour < 18) return "Good afternoon";
+        return "Good evening";
+    };
 
     const handleLogout = async () => { try { await logout(); } catch (e) { console.error(e); } };
 
@@ -215,7 +227,7 @@ const PatientDashboard = () => {
                         {profileImage ? <img src={profileImage} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} color="white" />}
                     </div>
                     <div>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Patient Portal</h2>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>{getGreeting()}!</h2>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{currentUser?.email}</span>
                         {healthId && (
                             <div style={{ marginTop: '0.2rem' }}>
