@@ -8,6 +8,7 @@ const Register = () => {
         name: '',
         email: '',
         password: '',
+        phoneNumber: '',
         profileImage: '',
         height: '',
         weight: '',
@@ -163,6 +164,19 @@ const Register = () => {
                             onChange={handleChange}
                             required
                             minLength="6"
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Phone Number (Required for OTP)</label>
+                        <input
+                            type="tel"
+                            className="form-input"
+                            name="phoneNumber"
+                            value={formData.phoneNumber}
+                            onChange={handleChange}
+                            placeholder="e.g., 9876543210"
+                            required
                         />
                     </div>
 
