@@ -31,6 +31,8 @@ from routers.auth_helpers import (
     StepLogRequest,
     SyncStepsRequest,
     PrescriptionRequest,
+    OTPGenerateRequest,
+    OTPVerifyRequest,
     REWARD_TIERS,
 )
 
@@ -601,3 +603,76 @@ def lookup_patient_by_health_id(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── 3-Layer Security (OTP) ───────────────────────────────────────────────────
+
+import random
+from datetime import timedelta
+
+@router.post("/patient/generate-otp")
+def generate_patient_otp(req: OTPGenerateRequest):
+    """
+    Generates a 6-digit OTP for the patient, saves it to Firestore with a 5-min expiry.
+    """
+    try:
+        db = firestore.client()
+        otp_code = str(random.randint(100000, 999999))
+        
+        # Save to DB
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        db.collection("login_otps").document(req.uid).set({
+            "otp": otp_code,
+            "expires_at": expires_at,
+            "created_at": firestore.SERVER_TIMESTAMP
+        })
+        
+        # For this college project, we just print it to the terminal instead of sending a real SMS/Email
+        print(f"\n{'='*50}\n[SECURITY LAYER 2] OTP for Patient {req.uid}: {otp_code}\n{'='*50}\n")
+        
+        return {"message": "OTP generated and sent successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate OTP: {str(e)}")
+
+
+@router.post("/patient/verify-otp")
+def verify_patient_otp(req: OTPVerifyRequest):
+    """
+    Verifies the provided OTP against the database record for the patient.
+    """
+    try:
+        db = firestore.client()
+        doc_ref = db.collection("login_otps").document(req.uid)
+        doc = doc_ref.get()
+        
+        if not doc.exists:
+            raise HTTPException(status_code=400, detail="No active OTP found. Please request a new one.")
+            
+        data = doc.to_dict()
+        
+        # Check Expiry
+        # Note: firestore datetimes are timezone-aware if fetched as DatetimeWithNanoseconds
+        expires_at = data.get("expires_at")
+        if expires_at:
+            # Handle if expires_at is returned as string or datetime
+            if isinstance(expires_at, str):
+                expires_at_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            else:
+                expires_at_dt = expires_at
+                
+            if datetime.utcnow().timestamp() > expires_at_dt.timestamp():
+                doc_ref.delete()
+                raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+                
+        # Check Match
+        if data.get("otp") != req.otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP code.")
+            
+        # Success - Delete OTP so it can't be reused
+        doc_ref.delete()
+        return {"message": "OTP verified successfully", "success": True}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify OTP: {str(e)}")

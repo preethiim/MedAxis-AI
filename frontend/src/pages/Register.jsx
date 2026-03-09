@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { HeartPulse } from 'lucide-react';
-
+import ProfileImageUpload from '../components/ProfileImageUpload';
 const Register = () => {
     const [formData, setFormData] = useState({
         name: '',
         email: '',
         password: '',
+        profileImage: '',
         height: '',
         weight: '',
         bmi: ''
@@ -125,6 +126,22 @@ const Register = () => {
                     </div>
 
                     <div className="form-group">
+                        <label className="form-label">Profile Image (Required for Face Login)</label>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <ProfileImageUpload
+                                currentImageUrl={formData.profileImage}
+                                onUploadComplete={(url) => setFormData(prev => ({ ...prev, profileImage: url }))}
+                                uid="temp_registration" // Usually UID is generated later, passing temp to component
+                            />
+                            {!formData.profileImage && (
+                                <small style={{ color: '#ef4444', display: 'block', marginTop: '0.25rem' }}>
+                                    A profile image showing your face is required for Layer 3 Security.
+                                </small>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="form-group">
                         <label className="form-label">Email Address</label>
                         <input
                             type="email"
@@ -176,7 +193,7 @@ const Register = () => {
                         </div>
                     </div>
 
-                    <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ marginTop: '0.5rem' }}>
+                    <button type="submit" className="btn-primary" disabled={isSubmitting || !formData.profileImage} style={{ marginTop: '0.5rem' }}>
                         {isSubmitting ? <span className="loader"></span> : 'Create Patient Account'}
                     </button>
                 </form>

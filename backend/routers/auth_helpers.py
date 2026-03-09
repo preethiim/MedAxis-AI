@@ -168,6 +168,15 @@ class PatientRequest(BaseModel):
     healthId: Optional[str] = ""
 
 
+class OTPGenerateRequest(BaseModel):
+    uid: str
+
+
+class OTPVerifyRequest(BaseModel):
+    uid: str
+    otp: str
+
+
 class VitalsRequest(BaseModel):
     uid: str
     height_cm: Optional[float] = None
