@@ -608,6 +608,8 @@ def lookup_patient_by_health_id(
 # ─── 3-Layer Security (OTP) ───────────────────────────────────────────────────
 
 import random
+import requests
+import os
 from datetime import timedelta
 
 @router.post("/patient/generate-otp")
@@ -630,6 +632,26 @@ def generate_patient_otp(req: OTPGenerateRequest):
         # For this college project, we just print it to the terminal instead of sending a real SMS/Email
         print(f"\n{'='*50}\n[SECURITY LAYER 2] OTP for Patient {req.uid}: {otp_code}\n{'='*50}\n")
         
+        # ── Fast2SMS Integration ──
+        # We need the user's phone number from Firestore to send the SMS
+        user_doc = db.collection("users").document(req.uid).get()
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            phone_number = user_data.get("phoneNumber")
+            if phone_number:
+                # Remove '+' or country code for India if Fast2SMS requires just 10 digits
+                # Though Fast2SMS usually accepts standard 10 digit Indian numbers.
+                clean_phone = phone_number.replace("+91", "").strip()
+                
+                api_key = os.getenv("FAST2SMS_API_KEY")
+                if api_key and len(clean_phone) >= 10:
+                    try:
+                        url = f"https://www.fast2sms.com/dev/bulkV2?authorization={api_key}&route=q&message=Your MedAxis AI login OTP is {otp_code}. Do not share this with anyone!&language=english&flash=0&numbers={clean_phone}"
+                        response = requests.get(url, timeout=5)
+                        print(f"Fast2SMS Response: {response.status_code} - {response.text}")
+                    except Exception as sms_err:
+                        print(f"Failed to send SMS via Fast2SMS: {sms_err}")
+
         return {"message": "OTP generated and sent successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate OTP: {str(e)}")
