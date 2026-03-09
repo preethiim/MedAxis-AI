@@ -13,6 +13,8 @@ const Login = () => {
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
     // 3-Layer Security States for Patients
     const [authStep, setAuthStep] = useState(1); // 1 = Email, 2 = OTP, 3 = Face, 4 = Done
     const [patientUid, setPatientUid] = useState(null); // Holds UID during steps 2 & 3
@@ -89,7 +91,7 @@ const Login = () => {
             if (role === 'patient') {
                 // Pre-fetch user document to get the profileImage for Face Match
                 const token = await user.getIdToken();
-                const res = await fetch(`http://localhost:8000/patient/me`, {
+                const res = await fetch(`${API_BASE_URL}/patient/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
@@ -121,7 +123,7 @@ const Login = () => {
 
     const generateBackendOTP = async (uid, token) => {
         try {
-            const res = await fetch('http://localhost:8000/patient/generate-otp', {
+            const res = await fetch(`${API_BASE_URL}/patient/generate-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -145,7 +147,7 @@ const Login = () => {
         setIsSubmitting(true);
         try {
             const token = await currentUser.getIdToken();
-            const res = await fetch('http://localhost:8000/patient/verify-otp', {
+            const res = await fetch(`${API_BASE_URL}/patient/verify-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

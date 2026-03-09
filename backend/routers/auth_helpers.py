@@ -154,6 +154,7 @@ class RegisterRequest(BaseModel):
     role: str = "patient"   # always overridden server-side to 'patient' on /auth/register
     healthId: str = ""
     employeeId: str = ""
+    phoneNumber: str = ""
     height: str = ""
     weight: str = ""
     bmi: str = ""

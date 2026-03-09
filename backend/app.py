@@ -117,6 +117,7 @@ class RegisterRequest(BaseModel):
     role: str
     healthId: str = ""
     employeeId: str = ""
+    phoneNumber: str = ""
     height: str = ""
     weight: str = ""
     bmi: str = ""
@@ -161,6 +162,7 @@ def register_user(req: RegisterRequest):
         if req.role == "patient":
             generated_health_id = "PAT-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
             user_data["healthId"] = req.healthId if req.healthId else generated_health_id
+            user_data["phoneNumber"] = req.phoneNumber
             user_data["height"] = req.height
             user_data["weight"] = req.weight
             user_data["bmi"] = req.bmi
