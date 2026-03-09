@@ -271,6 +271,38 @@ def get_patient_vitals(uid: str = Depends(get_current_patient_uid)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch patient vitals: {str(e)}")
 
 
+@router.get("/patient/doctors")
+def get_all_doctors(uid: str = Depends(get_current_patient_uid)):
+    """Fetches a list of all verified doctors available for consent."""
+    try:
+        db = firestore.client()
+        doctors = [doc.to_dict() | {"doc_id": doc.id} for doc in db.collection("users").where("role", "==", "doctor").stream()]
+        
+        cleaned_doctors = []
+        for d in doctors:
+            cleaned_doctors.append({
+                "uid": d.get("uid", d.get("doc_id")),
+                "name": d.get("name", "Unknown Doctor"),
+                "email": d.get("email", ""),
+                "specialization": d.get("specialization", "General Medicine"),
+                "profileImage": d.get("profileImage", ""),
+            })
+        return {"doctors": cleaned_doctors}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch doctors: {str(e)}")
+
+
+@router.get("/patient/consents")
+def get_patient_consents(uid: str = Depends(get_current_patient_uid)):
+    """Fetches a list of doctor UIDs the patient has granted consent to."""
+    try:
+        db = firestore.client()
+        consents = [doc.id for doc in db.collection("consents").document(uid).collection("doctors").where("granted", "==", True).stream()]
+        return {"consents": consents}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch consents: {str(e)}")
+
+
 @router.post("/patient/grant-consent")
 def grant_patient_consent(req: PatientConsentRequest, uid: str = Depends(get_current_patient_uid)):
     """Allows a patient to grant viewing consent to a specific doctor."""

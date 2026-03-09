@@ -161,7 +161,7 @@ const SuperAdminDashboard = () => {
         finally { setDeleteLoading(false); }
     };
 
-    const tabs = ['stats', 'users', 'reports', 'lookup'];
+    const tabs = ['stats', 'users', 'reports', 'lookup', 'guide'];
 
     const cardStyle = {
         background: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '12px',
@@ -251,7 +251,7 @@ const SuperAdminDashboard = () => {
                             borderBottom: activeTab === tab ? '2px solid var(--primary)' : '2px solid transparent',
                             cursor: 'pointer', fontWeight: 600, textTransform: 'capitalize', whiteSpace: 'nowrap'
                         }}
-                    >{tab === 'lookup' ? '🔍 Patient Lookup' : tab === 'stats' ? '📊 Platform Stats' : tab === 'users' ? '👥 All Users' : '📋 All Reports'}</button>
+                    >{tab === 'lookup' ? '🔍 Patient Lookup' : tab === 'stats' ? '📊 Platform Stats' : tab === 'users' ? '👥 All Users' : tab === 'reports' ? '📋 All Reports' : '🎓 Project Guide'}</button>
                 ))}
             </div>
 
@@ -336,6 +336,65 @@ const SuperAdminDashboard = () => {
                                     )}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Guide Tab */}
+                    {activeTab === 'guide' && (
+                        <div className="glass-panel" style={{ padding: '2rem', lineHeight: '1.6' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+                                <Shield size={28} color="var(--primary)" />
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Platform Guide</h3>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Project Workflow and Access Role Documentation</p>
+                                </div>
+                            </div>
+
+                            <p style={{ marginBottom: '2rem', color: 'var(--text-main)', fontSize: '0.95rem' }}>
+                                This system provides role-based access to manage hospitals, doctors, and patient diagnostic reports using AI analysis.
+                                Below is the intended user workflow.
+                            </p>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: '10px', borderLeft: '4px solid #f59e0b' }}>
+                                    <h4 style={{ color: '#f59e0b', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Shield size={18} /> 1. Superadmin Role
+                                    </h4>
+                                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                        Superadmins oversee the platform. They can create <strong>Hospital</strong> accounts via the "All Users" tab.
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: '10px', borderLeft: '4px solid #f472b6' }}>
+                                    <h4 style={{ color: '#f472b6', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Users size={18} /> 2. Hospital Admin Role
+                                    </h4>
+                                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                        Hospitals manage clinical staff. Hospital admins can create <strong>Doctor</strong> accounts
+                                        and assign registered patients to specific doctors.
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: '10px', borderLeft: '4px solid #60a5fa' }}>
+                                    <h4 style={{ color: '#60a5fa', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <User size={18} /> 3. Patient Workflow
+                                    </h4>
+                                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                        Patients register dynamically. They can track vitals, upload blood report PDFs, and the AI will auto-analyze risk factors.
+                                        Crucially, patients must explicitly manage doctor access via the <strong>Consent & Access</strong> tab to share their reports.
+                                    </p>
+                                </div>
+
+                                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: '10px', borderLeft: '4px solid #34d399' }}>
+                                    <h4 style={{ color: '#34d399', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Activity size={18} /> 4. Doctor Role
+                                    </h4>
+                                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                        Doctors only see reports for patients who are assigned to them AND have explicitly granted consent.
+                                        They can review AI summaries, resolve alerts, and create prescriptions.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </>

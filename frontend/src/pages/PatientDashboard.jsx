@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth } from '../firebase/firebaseConfig';
-import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Upload, Footprints, RefreshCw } from 'lucide-react';
+import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Upload, Footprints, RefreshCw, Shield } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { ProfileImageUpload } from '../components/ProfileImageUpload';
 
@@ -36,6 +36,10 @@ const PatientDashboard = () => {
     const [syncLoading, setSyncLoading] = useState(false);
     const [healthId, setHealthId] = useState('');
     const [profileImage, setProfileImage] = useState(null);
+
+    const [doctors, setDoctors] = useState([]);
+    const [consents, setConsents] = useState([]);
+    const [fetchingDoctors, setFetchingDoctors] = useState(false);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -97,6 +101,29 @@ const PatientDashboard = () => {
             } catch (err) { console.error('Failed to fetch patient profile:', err); }
         };
         fetchProfile();
+
+        const fetchDoctorsAndConsents = async () => {
+            if (!currentUser) return;
+            setFetchingDoctors(true);
+            try {
+                const token = await currentUser.getIdToken();
+                const headers = { 'Authorization': `Bearer ${token}` };
+                const [docRes, conRes] = await Promise.all([
+                    fetch(`${FASTAPI_URL}/patient/doctors`, { headers }),
+                    fetch(`${FASTAPI_URL}/patient/consents`, { headers })
+                ]);
+                if (docRes.ok) {
+                    const data = await docRes.json();
+                    setDoctors(data.doctors || []);
+                }
+                if (conRes.ok) {
+                    const data = await conRes.json();
+                    setConsents(data.consents || []);
+                }
+            } catch (e) { console.error("Error fetching doctors", e); }
+            finally { setFetchingDoctors(false); }
+        };
+        fetchDoctorsAndConsents();
     }, [currentUser]);
 
     const getGreeting = () => {
@@ -107,6 +134,25 @@ const PatientDashboard = () => {
     };
 
     const handleLogout = async () => { try { await logout(); } catch (e) { console.error(e); } };
+
+    const toggleConsent = async (doctorUid, currentlyGranted) => {
+        try {
+            const token = await currentUser.getIdToken();
+            const endpoint = currentlyGranted ? "revoke-consent" : "grant-consent";
+            const res = await fetch(`${FASTAPI_URL}/patient/${endpoint}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+                body: JSON.stringify({ doctor_uid: doctorUid })
+            });
+            if (res.ok) {
+                if (currentlyGranted) {
+                    setConsents(prev => prev.filter(uid => uid !== doctorUid));
+                } else {
+                    setConsents(prev => [...prev, doctorUid]);
+                }
+            }
+        } catch (e) { console.error("Error toggling consent:", e); }
+    };
 
     const submitProfile = async (e) => {
         e.preventDefault(); setLoading(true); setError(null);
@@ -219,7 +265,8 @@ const PatientDashboard = () => {
         { id: 'steps', label: '🏃 Steps', icon: <Footprints size={14} /> },
         { id: 'trends', label: '📈 Trends', icon: <TrendingUp size={14} /> },
         { id: 'profile', label: '👤 Profile', icon: <User size={14} /> },
-        { id: 'vitals', label: '💓 Vitals', icon: <Activity size={14} /> }
+        { id: 'vitals', label: '💓 Vitals', icon: <Activity size={14} /> },
+        { id: 'consent', label: '👨‍⚕️ Access', icon: <Shield size={14} /> }
     ];
 
     return (
@@ -514,6 +561,48 @@ const PatientDashboard = () => {
                             <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Calculate & Save Vitals'}</button>
                             {results.vitals && <div style={{ marginTop: '1rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}><CheckCircle size={16} /> Saved Successfully</div>}
                         </form>
+                    )}
+
+                    {/* CONSENT & ACCESS */}
+                    {activeTab === 'consent' && (
+                        <div>
+                            <h3 style={{ fontSize: '1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Shield size={20} /> Consent & Access</h3>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                                Manage which doctors have access to your health records and diagnostic reports.
+                            </p>
+
+                            {fetchingDoctors ? (
+                                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}><span className="loader"></span> Loading doctors...</div>
+                            ) : doctors.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>No doctors available right now.</div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                                    {doctors.map(doc => {
+                                        const isGranted = consents.includes(doc.uid);
+                                        return (
+                                            <div key={doc.uid} style={{ background: 'rgba(255,255,255,0.03)', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--gradient-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                                        {doc.profileImage ? <img src={doc.profileImage} alt={doc.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} />}
+                                                    </div>
+                                                    <div>
+                                                        <h4 style={{ margin: '0 0 0.25rem', fontSize: '0.95rem' }}>{doc.name}</h4>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>{doc.specialization || "General Medicine"}</div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => toggleConsent(doc.uid, isGranted)}
+                                                    className={isGranted ? "btn-outline" : "btn-primary"}
+                                                    style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem', borderColor: isGranted ? '#ef4444' : '', color: isGranted ? '#ef4444' : '' }}
+                                                >
+                                                    {isGranted ? "Revoke Access" : "Grant Access"}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     )}
 
                 </div>
