@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
-import { auth } from '../firebase/firebaseConfig';
+import { auth, db } from '../firebase/firebaseConfig';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { HeartPulse, CheckCircle, Camera, ShieldCheck } from 'lucide-react';
@@ -16,9 +17,10 @@ const Login = () => {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
     // 3-Layer Security States for Patients
-    const [authStep, setAuthStep] = useState(1); // 1 = Email, 2 = OTP, 3 = Face, 4 = Done
+    const [authStep, setAuthStep] = useState(0); // 0 = Role, 1 = Email, 2 = OTP, 3 = Face, 4 = Done
+    const [selectedRole, setSelectedRole] = useState(null); // 'patient' | 'doctor' | 'admin'
     const [patientUid, setPatientUid] = useState(null); // Holds UID during steps 2 & 3
-    const [referenceImageUrl, setReferenceImageUrl] = useState(null); // User's profile image to match against
+    const [storedFaceDescriptor, setStoredFaceDescriptor] = useState(null); // Float32Array equivalent stored in DB
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const webcamRef = React.useRef(null);
 
@@ -88,26 +90,30 @@ const Login = () => {
             const tokenResult = await user.getIdTokenResult(true);
             const role = tokenResult.claims.role;
 
-            if (role === 'patient') {
-                // Pre-fetch user document to get the profileImage for Face Match
-                const token = await user.getIdToken();
-                const res = await fetch(`${API_BASE_URL}/patient/me`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+            // Enforce selected role
+            const isRoleValid = (role === selectedRole) ||
+                (selectedRole === 'admin' && (role === 'hospital' || role === 'superadmin'));
 
-                if (res.ok) {
-                    const data = await res.json();
-                    if (!data.profileImage) {
-                        await auth.signOut();
-                        setError("Face Authentication Required: Please update your profile with a clear face image to log in.");
-                        setIsSubmitting(false);
-                        return;
-                    }
-                    setReferenceImageUrl(data.profileImage);
+            if (!isRoleValid && role) {
+                await auth.signOut();
+                setError(`Access Denied: You selected the ${selectedRole} portal but your account is registered as a ${role}.`);
+                setIsSubmitting(false);
+                return;
+            }
+
+            if (selectedRole === 'patient') {
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+
+                if (userDocSnap.exists() && userDocSnap.data().faceData) {
+                    setStoredFaceDescriptor(userDocSnap.data().faceData);
+                } else {
+                    setStoredFaceDescriptor(null); // Force setup
                 }
 
                 // Proceed to Step 2: OTP
                 setPatientUid(user.uid);
+                const token = await user.getIdToken();
                 await generateBackendOTP(user.uid, token);
                 setAuthStep(2);
                 setIsSubmitting(false);
@@ -176,15 +182,7 @@ const Login = () => {
         setIsSubmitting(true);
 
         try {
-            // 1. Get Reference Image Descriptor
-            const refImage = await faceapi.fetchImage(referenceImageUrl);
-            const refDetection = await faceapi.detectSingleFace(refImage).withFaceLandmarks().withFaceDescriptor();
-
-            if (!refDetection) {
-                throw new Error("Could not detect a face in your reference profile image. Please contact admin.");
-            }
-
-            // 2. Get Live Webcam Descriptor
+            // Get Live Webcam Descriptor
             const videoElement = webcamRef.current.video;
             const liveDetection = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
 
@@ -192,17 +190,27 @@ const Login = () => {
                 throw new Error("Could not detect a face in the webcam feed. Please ensure good lighting and look directly at the camera.");
             }
 
-            // 3. Compare Descriptors
-            const distance = faceapi.euclideanDistance(refDetection.descriptor, liveDetection.descriptor);
+            if (storedFaceDescriptor) {
+                // Compare Descriptors
+                const storedFloat32Array = new Float32Array(storedFaceDescriptor);
+                const distance = faceapi.euclideanDistance(storedFloat32Array, liveDetection.descriptor);
 
-            // distance < 0.6 is good match, closer to 0 is better.
-            const THRESHOLD = 0.5;
+                // distance < 0.6 is good match, closer to 0 is better.
+                const THRESHOLD = 0.5;
 
-            if (distance < THRESHOLD) {
-                // Success!
-                setAuthStep(4);
+                if (distance < THRESHOLD) {
+                    // Success!
+                    setAuthStep(4);
+                } else {
+                    throw new Error(`Face match failed (Distance: ${distance.toFixed(2)}). You do not match the registered profile image.`);
+                }
             } else {
-                throw new Error(`Face match failed (Distance: ${distance.toFixed(2)}). You do not match the registered profile image.`);
+                // First login: Store face descriptor in Firestore
+                const userDocRef = doc(db, 'users', patientUid);
+                const descriptorArray = Array.from(liveDetection.descriptor);
+                await setDoc(userDocRef, { faceData: descriptorArray }, { merge: true });
+                setStoredFaceDescriptor(descriptorArray);
+                setAuthStep(4);
             }
         } catch (err) {
             setError(err.message);
@@ -275,8 +283,22 @@ const Login = () => {
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
                     <img src="/logo.png" alt="MedAxis AI Logo" style={{ height: '56px', objectFit: 'contain' }} />
                 </div>
-                <h1 className="auth-title">Welcome Back</h1>
-                <p className="auth-subtitle">Sign in to MedAxis AI</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    {authStep > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => { setAuthStep(0); setSelectedRole(null); setError(''); }}
+                            style={{ position: 'absolute', left: 0, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem', padding: '0.5rem 0' }}
+                        >
+                            &larr; Back
+                        </button>
+                    )}
+                    <h1 className="auth-title" style={{ margin: 0, marginTop: '0.5rem' }}>Welcome Back</h1>
+                </div>
+
+                <p className="auth-subtitle" style={{ marginTop: '0.5rem' }}>
+                    {authStep === 0 ? "Select your portal to continue" : `Log in to MedAxis AI as ${selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}`}
+                </p>
 
                 {error && <div className="error-msg">{error}</div>}
 
@@ -286,20 +308,51 @@ const Login = () => {
                     </div>
                 )}
 
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
-                    <button
-                        onClick={() => setLoginMethod('email')}
-                        style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: loginMethod === 'email' ? 'var(--primary)' : 'transparent', color: loginMethod === 'email' ? 'white' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}
-                    >
-                        Email
-                    </button>
-                    <button
-                        onClick={() => setLoginMethod('phone')}
-                        style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: loginMethod === 'phone' ? 'var(--primary)' : 'transparent', color: loginMethod === 'phone' ? 'white' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}
-                    >
-                        Phone OTP
-                    </button>
-                </div>
+                {authStep === 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+                        <button
+                            onClick={() => { setSelectedRole('patient'); setAuthStep(1); setLoginMethod('email'); }}
+                            style={{ padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.05)', color: 'white', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
+                            onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                            onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                        >
+                            Patient Portal
+                        </button>
+                        <button
+                            onClick={() => { setSelectedRole('doctor'); setAuthStep(1); setLoginMethod('email'); }}
+                            style={{ padding: '1rem', borderRadius: '8px', border: '1px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
+                            onMouseOver={(e) => e.target.style.background = 'rgba(16, 185, 129, 0.2)'}
+                            onMouseOut={(e) => e.target.style.background = 'rgba(16, 185, 129, 0.1)'}
+                        >
+                            Doctor Portal
+                        </button>
+                        <button
+                            onClick={() => { setSelectedRole('admin'); setAuthStep(1); setLoginMethod('email'); }}
+                            style={{ padding: '1rem', borderRadius: '8px', border: '1px solid #6366f1', background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
+                            onMouseOver={(e) => e.target.style.background = 'rgba(99, 102, 241, 0.2)'}
+                            onMouseOut={(e) => e.target.style.background = 'rgba(99, 102, 241, 0.1)'}
+                        >
+                            Administrator Portal
+                        </button>
+                    </div>
+                )}
+
+                {authStep > 0 && (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
+                        <button
+                            onClick={() => setLoginMethod('email')}
+                            style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: loginMethod === 'email' ? 'var(--primary)' : 'transparent', color: loginMethod === 'email' ? 'white' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}
+                        >
+                            Email
+                        </button>
+                        <button
+                            onClick={() => setLoginMethod('phone')}
+                            style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: loginMethod === 'phone' ? 'var(--primary)' : 'transparent', color: loginMethod === 'phone' ? 'white' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}
+                        >
+                            Phone OTP
+                        </button>
+                    </div>
+                )}
 
                 <div id="recaptcha-container"></div>
 
@@ -435,7 +488,9 @@ const Login = () => {
                             <Camera size={16} /> Layer 2 Passed. Final Step: Face Log In.
                         </div>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem', textAlign: 'center' }}>
-                            Please look straight into the camera to verify your identity against your profile image.
+                            {storedFaceDescriptor
+                                ? "Please look straight into the camera to verify your identity."
+                                : "Face setup required. Please look straight into the camera to register your face for future logins."}
                         </p>
 
                         {!modelsLoaded ? (
@@ -455,7 +510,7 @@ const Login = () => {
                                     />
                                 </div>
                                 <button onClick={handleFaceAuthentication} className="btn-primary" disabled={isSubmitting} style={{ width: '100%' }}>
-                                    {isSubmitting ? <span className="loader"></span> : 'Capture & Verify Face'}
+                                    {isSubmitting ? <span className="loader"></span> : (storedFaceDescriptor ? 'Verify Face' : 'Register & Log In')}
                                 </button>
                             </>
                         )}

@@ -94,6 +94,7 @@ def register_user(req: RegisterRequest):
             email=req.email,
             name=req.name,
             healthId=health_id,
+            phoneNumber=req.phoneNumber,
             height=req.height,
             weight=req.weight,
             bmi=req.bmi
