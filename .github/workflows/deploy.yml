@@ -34,7 +34,7 @@ jobs:
             --region us-central1 \
             --platform managed \
             --allow-unauthenticated \
-            --set-env-vars OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+            --set-env-vars OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},FAST2SMS_API_KEY=${{ secrets.FAST2SMS_API_KEY }} \
             --quiet
 
   deploy-frontend:

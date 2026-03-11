@@ -57,18 +57,20 @@ def generate_phone_otp(req: PhoneOTPGenerateRequest):
         
         if api_key and len(clean_phone_for_sms) >= 10:
             try:
-                msg = f"Your MedAxis AI login OTP is {otp_code}. Do not share this with anyone!"
+                print(f"DEBUG: Sending OTP {otp_code} to {clean_phone_for_sms} via Fast2SMS...")
                 response = requests.get(
                     "https://www.fast2sms.com/dev/bulkV2",
                     params={
                         "authorization": api_key,
                         "route": "otp",
                         "variables_values": otp_code,
-                        "numbers": clean_phone_for_sms
+                        "numbers": clean_phone_for_sms,
+                        "flash": "0",
+                        "schedule_time": ""
                     },
                     timeout=5
                 )
-                print(f"DEBUG: Fast2SMS for {clean_phone_for_sms} returned {response.status_code}")
+                print(f"DEBUG: Fast2SMS Response: {response.status_code} - {response.text}")
             except Exception as e:
                 print(f"ERROR: Fast2SMS failed: {e}")
         else:

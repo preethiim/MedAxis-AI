@@ -679,7 +679,7 @@ def generate_patient_otp(req: OTPGenerateRequest):
                 api_key = os.getenv("FAST2SMS_API_KEY")
                 if api_key and len(clean_phone) >= 10:
                     try:
-                        msg = f"Your MedAxis AI security OTP is {otp_code}. Do not share this with anyone!"
+                        print(f"DEBUG: Sending Step 2 OTP {otp_code} to {clean_phone} via Fast2SMS...")
                         # Using params for better encoding
                         response = requests.get(
                             "https://www.fast2sms.com/dev/bulkV2",
