@@ -178,6 +178,15 @@ class OTPVerifyRequest(BaseModel):
     otp: str
 
 
+class PhoneOTPGenerateRequest(BaseModel):
+    phoneNumber: str
+
+
+class PhoneOTPVerifyRequest(BaseModel):
+    phoneNumber: str
+    otp: str
+
+
 class VitalsRequest(BaseModel):
     uid: str
     height_cm: Optional[float] = None

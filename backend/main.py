@@ -144,7 +144,8 @@ async def upload_profile_image(
         image_url = blob.public_url
         
         db = firestore.client()
-        db.collection("users").document(token_uid).update({"profileImage": image_url})
+        # Use set with merge=True in case the document was deleted (cleanup)
+        db.collection("users").document(token_uid).set({"profileImage": image_url}, merge=True)
         
         return {
             "success": True, 
@@ -175,8 +176,9 @@ def get_current_user_profile(token_uid: str = Depends(get_any_authenticated_uid)
 
 # ─── Register Routers ─────────────────────────────────────────────────────────
 
-from routers import patient, doctor, hospital, superadmin
+from routers import auth, patient, doctor, hospital, superadmin
 
+app.include_router(auth.router)
 app.include_router(patient.router)
 app.include_router(doctor.router)
 app.include_router(hospital.router)

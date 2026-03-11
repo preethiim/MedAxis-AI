@@ -677,14 +677,25 @@ def generate_patient_otp(req: OTPGenerateRequest):
                 # Though Fast2SMS usually accepts standard 10 digit Indian numbers.
                 clean_phone = phone_number.replace("+91", "").strip()
                 
-                api_key = os.getenv("FAST2SMS_API_KEY")
                 if api_key and len(clean_phone) >= 10:
                     try:
-                        url = f"https://www.fast2sms.com/dev/bulkV2?authorization={api_key}&route=q&message=Your MedAxis AI login OTP is {otp_code}. Do not share this with anyone!&language=english&flash=0&numbers={clean_phone}"
-                        response = requests.get(url, timeout=5)
-                        print(f"Fast2SMS Response: {response.status_code} - {response.text}")
+                        msg = f"Your MedAxis AI security OTP is {otp_code}. Do not share this with anyone!"
+                        # Using params for better encoding
+                        response = requests.get(
+                            "https://www.fast2sms.com/dev/bulkV2",
+                            params={
+                                "authorization": api_key,
+                                "route": "q",
+                                "message": msg,
+                                "language": "english",
+                                "flash": 0,
+                                "numbers": clean_phone
+                            },
+                            timeout=5
+                        )
+                        print(f"Fast2SMS Step 2 Response: {response.status_code} - {response.text}")
                     except Exception as sms_err:
-                        print(f"Failed to send SMS via Fast2SMS: {sms_err}")
+                        print(f"Failed to send Step 2 SMS via Fast2SMS: {sms_err}")
 
         return {"message": "OTP generated and sent successfully."}
     except Exception as e:

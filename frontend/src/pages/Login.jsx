@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, RecaptchaVerifier, signInWithPhoneNumber, signInWithCustomToken } from 'firebase/auth';
 import { auth, db } from '../firebase/firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -251,11 +251,17 @@ const Login = () => {
         setError('');
         setIsSubmitting(true);
         try {
-            setupRecaptcha();
-            const appVerifier = window.recaptchaVerifier;
             const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
-            const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
-            setConfirmationResult(confirmation);
+            
+            // --- Custom Backend OTP (Fast2SMS) ---
+            const res = await fetch(`${API_BASE_URL}/auth/phone/generate-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phoneNumber: formattedPhone })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Failed to send OTP");
+            
             setIsOtpSent(true);
         } catch (err) {
             setError(err.message);
@@ -270,7 +276,19 @@ const Login = () => {
         setError('');
         setIsSubmitting(true);
         try {
-            await confirmationResult.confirm(otp);
+            const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
+            
+            // --- Custom Backend OTP Verify ---
+            const res = await fetch(`${API_BASE_URL}/auth/phone/verify-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phoneNumber: formattedPhone, otp: otp })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Invalid OTP");
+            
+            // Sign in with the Custom Token returned by backend
+            await signInWithCustomToken(auth, data.customToken);
         } catch (err) {
             setError(err.message);
             setIsSubmitting(false);
@@ -460,7 +478,7 @@ const Login = () => {
                             <ShieldCheck size={16} /> Layer 1 Passed. Enter Security PIN.
                         </div>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                            Check your backend terminal for the simulated OTP code sent to Patient UID: {patientUid?.substring(0, 8)}...
+                            A security OTP has been sent to your registered phone number.
                         </p>
                         <div className="form-group">
                             <label className="form-label">6-Digit OTP</label>
