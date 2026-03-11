@@ -676,7 +676,7 @@ def generate_patient_otp(req: OTPGenerateRequest):
                 # Remove '+' or country code for India if Fast2SMS requires just 10 digits
                 # Though Fast2SMS usually accepts standard 10 digit Indian numbers.
                 clean_phone = phone_number.replace("+91", "").strip()
-                
+                api_key = os.getenv("FAST2SMS_API_KEY")
                 if api_key and len(clean_phone) >= 10:
                     try:
                         msg = f"Your MedAxis AI security OTP is {otp_code}. Do not share this with anyone!"
