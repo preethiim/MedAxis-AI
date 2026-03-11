@@ -685,10 +685,8 @@ def generate_patient_otp(req: OTPGenerateRequest):
                             "https://www.fast2sms.com/dev/bulkV2",
                             params={
                                 "authorization": api_key,
-                                "route": "q",
-                                "message": msg,
-                                "language": "english",
-                                "flash": 0,
+                                "route": "otp",
+                                "variables_values": otp_code,
                                 "numbers": clean_phone
                             },
                             timeout=5

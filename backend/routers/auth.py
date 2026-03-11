@@ -62,10 +62,8 @@ def generate_phone_otp(req: PhoneOTPGenerateRequest):
                     "https://www.fast2sms.com/dev/bulkV2",
                     params={
                         "authorization": api_key,
-                        "route": "q",
-                        "message": msg,
-                        "language": "english",
-                        "flash": 0,
+                        "route": "otp",
+                        "variables_values": otp_code,
                         "numbers": clean_phone_for_sms
                     },
                     timeout=5
