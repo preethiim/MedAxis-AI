@@ -6,9 +6,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth } from '../firebase/firebaseConfig';
-import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Upload, Footprints, RefreshCw, Shield } from 'lucide-react';
+import { User, Activity, FileText, CheckCircle, AlertCircle, TrendingUp, Upload, Footprints, RefreshCw, Shield, Pill, DownloadCloud, Bell } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { ProfileImageUpload } from '../components/ProfileImageUpload';
+import MedicineReminders from '../components/MedicineReminders';
+import FamilyHealthTab from '../components/FamilyHealthTab';
+import CheckupTracker from '../components/CheckupTracker';
 
 const FASTAPI_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -26,6 +29,12 @@ const PatientDashboard = () => {
 
     const [fetchedReports, setFetchedReports] = useState([]);
     const [fetchingReports, setFetchingReports] = useState(false);
+
+    // Prescriptions State
+    const [fetchedPrescriptions, setFetchedPrescriptions] = useState([]);
+    const [fetchingPrescriptions, setFetchingPrescriptions] = useState(false);
+    const [prescriptionFile, setPrescriptionFile] = useState(null);
+
     const [bmiData, setBmiData] = useState([]);
     const [fetchingTrends, setFetchingTrends] = useState(false);
 
@@ -40,22 +49,33 @@ const PatientDashboard = () => {
     const [doctors, setDoctors] = useState([]);
     const [consents, setConsents] = useState([]);
     const [fetchingDoctors, setFetchingDoctors] = useState(false);
+    const [idToken, setIdToken] = useState('');
+    const [lastCheckupDate, setLastCheckupDate] = useState('');
 
     useEffect(() => {
         const fetchDashboardData = async () => {
             if (!currentUser) return;
+            const token = await currentUser.getIdToken();
+            setIdToken(token);
             setFetchingReports(true);
+            setFetchingPrescriptions(true);
             setFetchingTrends(true);
             try {
                 const token = await currentUser.getIdToken();
                 const headers = { 'Authorization': `Bearer ${token}` };
-                const [reportsRes, vitalsRes, stepsRes] = await Promise.all([
+                const [reportsRes, vitalsRes, stepsRes, rxRes] = await Promise.all([
                     fetch(`${FASTAPI_URL}/patient/reports`, { headers }),
                     fetch(`${FASTAPI_URL}/patient/vitals`, { headers }),
-                    fetch(`${FASTAPI_URL}/patient/step-rewards`, { headers })
+                    fetch(`${FASTAPI_URL}/patient/step-rewards`, { headers }),
+                    fetch(`${FASTAPI_URL}/patient/prescriptions`, { headers })
                 ]);
                 const reportsData = await reportsRes.json();
                 if (reportsRes.ok) setFetchedReports(reportsData.reports || []);
+
+                if (rxRes.ok) {
+                    const rxData = await rxRes.json();
+                    setFetchedPrescriptions(rxData.prescriptions || []);
+                }
 
                 const vitalsData = await vitalsRes.json();
                 if (vitalsRes.ok && vitalsData.vitals) {
@@ -78,7 +98,7 @@ const PatientDashboard = () => {
                 const stepsData = await stepsRes.json();
                 if (stepsRes.ok) setStepRewards(stepsData);
             } catch (err) { console.error("Error fetching:", err); }
-            finally { setFetchingReports(false); setFetchingTrends(false); }
+            finally { setFetchingReports(false); setFetchingTrends(false); setFetchingPrescriptions(false); }
         };
         fetchDashboardData();
 
@@ -91,6 +111,7 @@ const PatientDashboard = () => {
                     const data = await res.json();
                     setHealthId(data.healthId || '');
                     setProfileImage(data.profileImage || null);
+                    setLastCheckupDate(data.lastCheckupDate || '');
                     setProfile({
                         firstName: data.firstName || '',
                         lastName: data.lastName || '',
@@ -256,11 +277,37 @@ const PatientDashboard = () => {
             const reportsData = await reportsRes.json();
             if (reportsRes.ok) setFetchedReports(reportsData.reports || []);
             setActiveTab('my reports');
-        } catch (err) { setError(err.message); } finally { setLoading(false); }
+        } catch (err) { setError(err.message); } finally { setLoading(false); setReportFile(null); }
+    };
+
+    const uploadPrescription = async (e) => {
+        e.preventDefault();
+        if (!prescriptionFile) return;
+        setLoading(true); setError(null);
+        const formData = new FormData();
+        formData.append("uid", currentUser.uid);
+        formData.append("file", prescriptionFile);
+        try {
+            const res = await fetch(`${FASTAPI_URL}/upload/prescription`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to analyze prescription');
+
+            // Auto-switch to Prescriptions and refresh
+            const token = await currentUser.getIdToken();
+            const rxRes = await fetch(`${FASTAPI_URL}/patient/prescriptions`, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (rxRes.ok) {
+                const rxData = await rxRes.json();
+                setFetchedPrescriptions(rxData.prescriptions || []);
+            }
+            setActiveTab('rx');
+        } catch (err) { setError(err.message); } finally { setLoading(false); setPrescriptionFile(null); }
     };
 
     const tabs = [
         { id: 'my reports', label: '📋 Reports', icon: <FileText size={14} /> },
+        { id: 'rx', label: '💊 Prescriptions', icon: <Pill size={14} /> },
+        { id: 'reminders', label: '🔔 Reminders', icon: <Bell size={14} /> },
+        { id: 'family', label: '👨‍👩‍👧 Family', icon: null },
         { id: 'upload pdf', label: '📄 Upload', icon: <Upload size={14} /> },
         { id: 'steps', label: '🏃 Steps', icon: <Footprints size={14} /> },
         { id: 'trends', label: '📈 Trends', icon: <TrendingUp size={14} /> },
@@ -296,6 +343,18 @@ const PatientDashboard = () => {
 
             {/* Main Grid */}
             <div className="dashboard-grid">
+
+                {/* Checkup Reminder Banner — shown above sidebar on mobile, before grid on desktop */}
+                <div style={{ gridColumn: '1/-1', marginBottom: '-0.25rem' }}>
+                    <CheckupTracker
+                        uid={currentUser?.uid}
+                        token={idToken}
+                        initialDate={lastCheckupDate}
+                        onDateSaved={async (d) => {
+                            setLastCheckupDate(d);
+                        }}
+                    />
+                </div>
                 {/* Sidebar */}
                 <div className="sidebar">
                     <div className="glass-panel" style={{ padding: '1rem' }}>
@@ -343,7 +402,7 @@ const PatientDashboard = () => {
                                 <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
                                     <Activity size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
                                     <p>No diagnostic reports found.</p>
-                                    <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Upload a PDF or Image in the "Upload" tab to get your first AI analysis.</p>
+                                    <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Upload a PDF or Image in the &quot;Upload&quot; tab to get your first AI analysis.</p>
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -403,30 +462,157 @@ const PatientDashboard = () => {
                         </div>
                     )}
 
-                    {/* UPLOAD PDF */}
-                    {activeTab === 'upload pdf' && (
+                    {/* PRESCRIPTIONS */}
+                    {activeTab === 'rx' && (
                         <div>
-                            <h3 style={{ fontSize: '1.15rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Upload size={20} /> Upload Blood Report</h3>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-                                Upload a blood work PDF or Image. Our AI will extract key metrics, analyze risk levels, and provide clinical recommendations.
-                            </p>
-                            <form onSubmit={uploadReport}>
-                                <div style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '2rem', textAlign: 'center', marginBottom: '1rem', background: 'var(--input-bg)', transition: 'var(--transition)' }}>
-                                    <Upload size={32} style={{ color: 'var(--text-dim)', marginBottom: '0.75rem' }} />
-                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>{reportFile ? `📄 ${reportFile.name}` : 'Drag & drop or click to select a PDF or Image'}</p>
-                                    <input type="file" accept="application/pdf, image/png, image/jpeg, .pdf, .png, .jpg, .jpeg" onChange={e => setReportFile(e.target.files[0])} style={{ opacity: 0, position: 'absolute', width: 0 }} id="pdf-upload" />
-                                    <label htmlFor="pdf-upload" className="btn-outline" style={{ cursor: 'pointer', display: 'inline-block' }}>Choose File</label>
+                            <h3 style={{ fontSize: '1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Pill size={20} /> Prescriptions & Medications
+                            </h3>
+                            {fetchingPrescriptions ? (
+                                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
+                                    <span className="loader" style={{ marginBottom: '1rem', display: 'block', marginLeft: 'auto', marginRight: 'auto' }}></span>
+                                    Loading prescriptions...
                                 </div>
-                                <button type="submit" className="btn-primary" disabled={loading || !reportFile} style={{ width: '100%' }}>
-                                    {loading ? '⏳ Analyzing with AI...' : '🚀 Upload & Analyze'}
-                                </button>
-                            </form>
-                            {results.reportAnalysis && (
-                                <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--success)', fontWeight: 600, marginBottom: '0.5rem' }}><CheckCircle size={16} /> Analysis Complete!</div>
-                                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Your report has been analyzed. Switch to "Reports" to see the detailed AI summary.</p>
+                            ) : fetchedPrescriptions.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
+                                    <Pill size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                                    <p>No prescriptions found.</p>
+                                    <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Upload a prescription in the &quot;Upload&quot; tab.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                    {fetchedPrescriptions.map((px, idx) => {
+                                        const severity = px.ai_analysis?.severity || 'Unknown';
+                                        const summary = px.ai_analysis?.summary || 'No summary available.';
+                                        const comparison = px.ai_analysis?.comparison || '';
+                                        const recommendations = px.ai_analysis?.recommendations || [];
+
+                                        const badgeClass = severity === 'High' ? 'badge-risk-high' : severity === 'Moderate' ? 'badge-risk-moderate' : severity === 'Low' ? 'badge-risk-low' : 'badge-role';
+
+                                        return (
+                                            <div key={px.id || idx} className="report-card">
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                    <div>
+                                                        <h4 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem' }}>Prescription Details</h4>
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{px.filename}</span>
+                                                        {px.uploaded_at && <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginLeft: '1rem' }}>📅 {new Date(px.uploaded_at).toLocaleString()}</span>}
+                                                    </div>
+                                                    <span className={`badge ${badgeClass}`}>Severity: {severity}</span>
+                                                </div>
+
+                                                <p style={{ fontSize: '0.95rem', lineHeight: 1.6, color: 'var(--text-main)', marginBottom: '0.75rem' }}>
+                                                    {summary}
+                                                </p>
+
+                                                {comparison && (
+                                                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '1rem' }}>
+                                                        &quot;{comparison}&quot;
+                                                    </p>
+                                                )}
+
+                                                {recommendations.length > 0 && (
+                                                    <div style={{ background: 'rgba(99, 102, 241, 0.08)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', borderLeft: '3px solid var(--primary)' }}>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.4rem' }}>Recommendations</div>
+                                                        {recommendations.map((r, i) => <div key={i} style={{ fontSize: '0.85rem', color: 'var(--text-main)', paddingLeft: '0.5rem', marginBottom: '0.2rem' }}>• {r}</div>)}
+                                                    </div>
+                                                )}
+
+                                                {px.file_url && <a href={px.file_url} target="_blank" rel="noreferrer" className="link" style={{ fontSize: '0.85rem' }}>→ View Original Document</a>}
+
+                                                {/* Medicine Reminders — rendered per prescription */}
+                                                {px.ai_analysis?.medicines?.length > 0 && (
+                                                    <MedicineReminders
+                                                        medicines={px.ai_analysis.medicines}
+                                                        uid={currentUser.uid}
+                                                    />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* REMINDERS TAB */}
+                    {activeTab === 'reminders' && (
+                        <div>
+                            <h3 style={{ fontSize: '1.15rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Bell size={20} /> Medicine Reminders
+                            </h3>
+                            {fetchedPrescriptions.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
+                                    <Bell size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                                    <p>No prescriptions uploaded yet.</p>
+                                    <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Upload a prescription first to set reminders.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                    {fetchedPrescriptions.map((px, idx) => {
+                                        const medicines = px.ai_analysis?.medicines || [];
+                                        if (medicines.length === 0) return null;
+                                        return (
+                                            <div key={px.id || idx} style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.25rem' }}>
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.75rem' }}>
+                                                    📄 {px.filename}
+                                                </div>
+                                                <MedicineReminders medicines={medicines} uid={currentUser.uid} />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* FAMILY HEALTH TRACKING */}
+                    {activeTab === 'family' && (
+                        <FamilyHealthTab uid={currentUser.uid} token={idToken} />
+                    )}
+
+                    {/* UPLOAD PDF/IMAGE/TXT */}
+                    {activeTab === 'upload pdf' && (
+                        <div>
+                            <h3 style={{ fontSize: '1.15rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Upload size={20} /> Upload Documents</h3>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                                Securely upload your medical documents. Our AI will extract the text and provide simple, actionable clinical insights.
+                            </p>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+
+                                {/* Upload Blood Report */}
+                                <div style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.5rem' }}>
+                                    <h4 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Activity size={18} color="var(--accent)" /> Blood Work & Labs</h4>
+                                    <form onSubmit={uploadReport}>
+                                        <div style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', textAlign: 'center', marginBottom: '1rem', background: 'var(--input-bg)' }}>
+                                            <Upload size={24} style={{ color: 'var(--text-dim)', marginBottom: '0.5rem' }} />
+                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>{reportFile ? `📄 ${reportFile.name}` : 'PDF, PNG, JPEG'}</p>
+                                            <input type="file" accept="application/pdf, image/png, image/jpeg, .pdf, .png, .jpg, .jpeg" onChange={e => setReportFile(e.target.files[0])} style={{ opacity: 0, position: 'absolute', width: 0 }} id="pdf-upload" />
+                                            <label htmlFor="pdf-upload" className="btn-outline" style={{ cursor: 'pointer', display: 'inline-block', fontSize: '0.85rem' }}>Select Blood Report</label>
+                                        </div>
+                                        <button type="submit" className="btn-primary" disabled={loading || !reportFile} style={{ width: '100%', fontSize: '0.9rem' }}>
+                                            {loading && reportFile ? '⏳ Analyzing...' : 'Upload Lab Report'}
+                                        </button>
+                                    </form>
+                                </div>
+
+                                {/* Upload Prescription */}
+                                <div style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.5rem' }}>
+                                    <h4 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Pill size={18} color="var(--primary)" /> Doctor Prescription</h4>
+                                    <form onSubmit={uploadPrescription}>
+                                        <div style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', textAlign: 'center', marginBottom: '1rem', background: 'var(--input-bg)' }}>
+                                            <DownloadCloud size={24} style={{ color: 'var(--text-dim)', marginBottom: '0.5rem' }} />
+                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>{prescriptionFile ? `📄 ${prescriptionFile.name}` : 'PDF, PNG, JPEG, TXT'}</p>
+                                            <input type="file" accept="application/pdf, image/png, image/jpeg, text/plain, .pdf, .png, .jpg, .jpeg, .txt" onChange={e => setPrescriptionFile(e.target.files[0])} style={{ opacity: 0, position: 'absolute', width: 0 }} id="rx-upload" />
+                                            <label htmlFor="rx-upload" className="btn-outline" style={{ cursor: 'pointer', display: 'inline-block', fontSize: '0.85rem' }}>Select Prescription</label>
+                                        </div>
+                                        <button type="submit" className="btn-primary" disabled={loading || !prescriptionFile} style={{ width: '100%', fontSize: '0.9rem', backgroundColor: 'var(--primary)' }}>
+                                            {loading && prescriptionFile ? '⏳ Processing Rx...' : 'Upload Prescription'}
+                                        </button>
+                                    </form>
+                                </div>
+
+                            </div>
                         </div>
                     )}
 
@@ -517,7 +703,7 @@ const PatientDashboard = () => {
                             ) : (
                                 <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
                                     <TrendingUp size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
-                                    <p>No vitals data yet. Submit your height & weight in the "Vitals" tab to start tracking BMI.</p>
+                                    <p>No vitals data yet. Submit your height &amp; weight in the &quot;Vitals&quot; tab to start tracking BMI.</p>
                                 </div>
                             )}
                         </div>
@@ -604,7 +790,6 @@ const PatientDashboard = () => {
                             )}
                         </div>
                     )}
-
                 </div>
             </div>
         </div>

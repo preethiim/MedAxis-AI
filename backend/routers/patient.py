@@ -462,6 +462,39 @@ def get_patient_prescriptions(uid: str = Depends(get_current_patient_uid)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/patient/checkup-date")
+def update_patient_checkup_date(
+    uid: str = Depends(get_current_patient_uid),
+):
+    """
+    Not used directly — use the body-accepting version below.
+    Kept as a stub placeholder.
+    """
+    raise HTTPException(status_code=400, detail="Provide lastCheckupDate in request body.")
+
+
+from pydantic import BaseModel as _BaseModel
+
+class CheckupDateRequest(_BaseModel):
+    lastCheckupDate: str  # ISO date string, e.g. "2025-12-15"
+
+
+@router.patch("/patient/update-checkup-date")
+def update_checkup_date(req: CheckupDateRequest, uid: str = Depends(get_current_patient_uid)):
+    """Save or update the patient's lastCheckupDate in their Firestore profile."""
+    try:
+        db = firestore.client()
+        db.collection("users").document(uid).set(
+            {"lastCheckupDate": req.lastCheckupDate, "updatedAt": firestore.SERVER_TIMESTAMP},
+            merge=True
+        )
+        return {"message": "Checkup date updated.", "lastCheckupDate": req.lastCheckupDate}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 @router.get("/patient/me")
 def get_patient_me(uid: str = Depends(get_current_patient_uid)):
     """Returns the authenticated patient's own Firestore profile (includes healthId)."""
@@ -485,6 +518,7 @@ def get_patient_me(uid: str = Depends(get_current_patient_uid)):
             "weight": data.get("weight", ""),
             "bmi": data.get("bmi", ""),
             "role": data.get("role", "patient"),
+            "lastCheckupDate": data.get("lastCheckupDate", ""),
         }
     except Exception as e:
         if hasattr(e, 'status_code'):
@@ -698,3 +732,153 @@ def verify_patient_otp(req: OTPVerifyRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to verify OTP: {str(e)}")
+
+
+# ─── Family Health Tracking ───────────────────────────────────────────────────
+
+from pydantic import BaseModel
+from typing import Optional
+
+class FamilyMemberRequest(BaseModel):
+    name: str
+    age: int
+    relation: str
+    lastCheckupDate: Optional[str] = ""
+    medicalNotes: Optional[str] = ""
+
+
+@router.post("/family/member")
+def add_family_member(req: FamilyMemberRequest, uid: str = Depends(get_current_patient_uid)):
+    """Add a new family member for the authenticated patient."""
+    try:
+        db = firestore.client()
+        member_id = str(uuid.uuid4())
+        member_data = {
+            "id": member_id,
+            "name": req.name,
+            "age": req.age,
+            "relation": req.relation,
+            "lastCheckupDate": req.lastCheckupDate or "",
+            "medicalNotes": req.medicalNotes or "",
+            "uid": uid,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        }
+        db.collection("family_members").document(uid).collection("members").document(member_id).set(member_data)
+        return {"message": "Family member added.", "member_id": member_id, "member": member_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/family/members")
+def get_family_members(uid: str = Depends(get_current_patient_uid)):
+    """Get all family members for the authenticated patient."""
+    try:
+        db = firestore.client()
+        docs = db.collection("family_members").document(uid).collection("members").stream()
+        members = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["id"] = doc.id
+            members.append(data)
+        return {"members": members}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/family/member/{member_id}")
+def update_family_member(member_id: str, req: FamilyMemberRequest, uid: str = Depends(get_current_patient_uid)):
+    """Update an existing family member's details."""
+    try:
+        db = firestore.client()
+        doc_ref = db.collection("family_members").document(uid).collection("members").document(member_id)
+        doc_ref.update({
+            "name": req.name,
+            "age": req.age,
+            "relation": req.relation,
+            "lastCheckupDate": req.lastCheckupDate or "",
+            "medicalNotes": req.medicalNotes or "",
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+        return {"message": "Family member updated."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/family/member/{member_id}")
+def delete_family_member(member_id: str, uid: str = Depends(get_current_patient_uid)):
+    """Delete a family member and all their subcollections."""
+    try:
+        db = firestore.client()
+        member_ref = db.collection("family_members").document(uid).collection("members").document(member_id)
+        # Delete subcollections first
+        for sub in ["prescriptions", "reports"]:
+            for doc in member_ref.collection(sub).stream():
+                doc.reference.delete()
+        member_ref.delete()
+        return {"message": "Family member deleted."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/family/upload-prescription")
+async def upload_family_prescription(
+    uid: str = Form(...),
+    member_id: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """
+    Upload & AI-analyze a prescription for a family member.
+    Stores file in Firebase Storage and result in Firestore.
+    """
+    try:
+        from ai_engine import analyze_prescription
+
+        file_bytes = await file.read()
+
+        # Upload to Firebase Storage
+        bucket = storage.bucket()
+        unique_id = str(uuid.uuid4())[:8]
+        safe_filename = file.filename.replace(" ", "_")
+        storage_path = f"family/{uid}/{member_id}/prescriptions/{unique_id}_{safe_filename}"
+        blob = bucket.blob(storage_path)
+        blob.upload_from_string(file_bytes, content_type=file.content_type)
+        blob.make_public()
+        file_url = blob.public_url
+
+        # Extract text & run AI
+        raw_text = extract_text_from_file(file_bytes, file.filename)
+        ai_summary = analyze_prescription(raw_text)
+
+        # Store in Firestore
+        db = firestore.client()
+        report_id = str(uuid.uuid4())
+        prescription_data = {
+            "id": report_id,
+            "member_id": member_id,
+            "patient_uid": uid,
+            "filename": file.filename,
+            "file_url": file_url,
+            "uploaded_at": firestore.SERVER_TIMESTAMP,
+            "ai_analysis": ai_summary,
+        }
+        db.collection("family_members").document(uid).collection("members").document(member_id).collection("prescriptions").document(report_id).set(prescription_data)
+
+        return {"message": "Prescription uploaded.", "file_url": file_url, "ai_analysis": ai_summary, "report_id": report_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Family prescription upload failed: {str(e)}")
+
+
+@router.get("/family/member/{member_id}/prescriptions")
+def get_family_member_prescriptions(member_id: str, uid: str = Depends(get_current_patient_uid)):
+    """Get all prescriptions for a specific family member."""
+    try:
+        db = firestore.client()
+        docs = (
+            db.collection("family_members").document(uid).collection("members")
+            .document(member_id).collection("prescriptions")
+            .order_by("uploaded_at", direction=firestore.Query.DESCENDING)
+            .stream()
+        )
+        return {"prescriptions": [doc.to_dict() for doc in docs]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

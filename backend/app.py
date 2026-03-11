@@ -471,6 +471,69 @@ async def upload_blood_report(uid: str = Form(...), file: UploadFile = File(...)
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=f"Failed to process Blood Report PDF: {str(e)}")
 
+@app.post("/upload/prescription")
+async def upload_prescription(uid: str = Form(...), file: UploadFile = File(...)):
+    """
+    1. Accepts a Prescription (PDF, Image, or TXT) and User UID.
+    2. Uploads the raw file to Firebase Storage.
+    3. Extracts text via OCR or Text Parsing.
+    4. Sends FULL text to GPT-4o-mini for simple explanation analysis.
+    5. Stores the result in Firestore `prescriptions/{uid}/reports/{id}`.
+    """
+    try:
+        # 1. Read file bytes
+        file_bytes = await file.read()
+        
+        # 2. Upload to Firebase Storage
+        bucket = storage.bucket()
+        safe_filename = file.filename.replace(" ", "_")
+        
+        # Ensure unique filename to prevent overwrites
+        unique_id = str(uuid.uuid4())[:8]
+        storage_path = f"prescriptions/{uid}/{unique_id}_{safe_filename}"
+        
+        blob = bucket.blob(storage_path)
+        blob.upload_from_string(file_bytes, content_type=file.content_type)
+        blob.make_public()
+        file_url = blob.public_url
+        
+        # 3. Extract text
+        print(f"DEBUG: Processing prescription. Filename: '{file.filename}', Content-Type: '{file.content_type}'")
+        raw_text = extract_text_from_file(file_bytes, file.filename)
+        
+        # 4. Analyze with AI Engine
+        from ai_engine import analyze_prescription
+        ai_summary = analyze_prescription(raw_text)
+        
+        # 5. Store in Firestore under a specific prescriptions collection
+        db = firestore.client()
+        report_id = str(uuid.uuid4())
+        
+        prescription_data = {
+            "id": report_id,
+            "patient_uid": uid,
+            "filename": file.filename,
+            "file_url": file_url,
+            "uploaded_at": firestore.SERVER_TIMESTAMP,
+            "ai_analysis": ai_summary,
+            "raw_text_preview": raw_text[:500] # store a small preview of raw OCR text for debugging
+        }
+        
+        doc_ref = db.collection("prescriptions").document(uid).collection("reports").document(report_id)
+        doc_ref.set(prescription_data)
+        
+        return {
+            "message": "Prescription uploaded and analyzed successfully.",
+            "file_url": file_url,
+            "ai_analysis": ai_summary,
+            "report_id": report_id
+        }
+        
+    except Exception as e:
+        from fastapi import HTTPException
+        print(f"Error processing prescription: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process Prescription: {str(e)}")
+
 from firebase_admin import auth
 from datetime import datetime
 
@@ -725,6 +788,26 @@ def get_patient_reports(uid: str = Depends(get_current_patient_uid)):
     except Exception as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=f"Failed to fetch patient reports: {str(e)}")
+
+@app.get("/patient/prescriptions")
+def get_patient_prescriptions(uid: str = Depends(get_current_patient_uid)):
+    """
+    Fetches all processed Prescriptions for the authenticated patient.
+    """
+    try:
+        db = firestore.client()
+        
+        # Fetch reports from the prescriptions subcollection
+        reports_ref = db.collection("prescriptions").document(uid).collection("reports").order_by("uploaded_at", direction=firestore.Query.DESCENDING)
+        reports = [doc.to_dict() for doc in reports_ref.stream()]
+        
+        return {
+            "uid": uid,
+            "prescriptions": reports
+        }
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Failed to fetch patient prescriptions: {str(e)}")
 
 @app.get("/patient/vitals")
 def get_patient_vitals(uid: str = Depends(get_current_patient_uid)):

@@ -13,6 +13,8 @@ def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
         return extract_text_from_image(file_bytes)
     elif ext == '.pdf':
         return extract_text_from_pdf(file_bytes)
+    elif ext == '.txt':
+        return file_bytes.decode('utf-8', errors='replace')
     else:
         raise ValueError(f"Unsupported file type: {ext}")
 

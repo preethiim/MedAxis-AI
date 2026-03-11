@@ -108,3 +108,67 @@ def _fallback_response(error_msg: str) -> Dict[str, Any]:
 def analyze_lab_values(lab_summary: str) -> Dict[str, Any]:
     """Legacy function for manual lab value analysis. Delegates to the new comprehensive analyzer."""
     return analyze_blood_report(lab_summary)
+
+def analyze_prescription(raw_text: str) -> Dict[str, Any]:
+    """
+    Analyzes an uploaded prescription (image, pdf, txt) using GPT-4o-mini.
+    Provides a simple summary, severity indicator, comparison, and recommendations.
+    """
+    try:
+        client = get_openai_client()
+
+        system_prompt = """You are an expert, empathetic medical AI assistant. You have been given the transcribed text of a patient's medical prescription.
+Your job is to read it carefully and return a JSON object explaining the patient's condition and prescribed treatment in very simple, easy-to-understand language.
+
+You MUST return ONLY a raw JSON object with this exact schema:
+{
+  "summary": "A brief, highly readable summary of what this prescription is for and how to take the medications. Avoid medical jargon.",
+  "severity": "Low" | "Moderate" | "High",
+  "comparison": "A recognizable comparison or analogy for the condition (e.g., 'similar to a mild vitamin deficiency' or 'like a common seasonal allergy').",
+  "recommendations": ["Recommendation 1", "Recommendation 2", ...],
+  "medicines": ["Medicine Name 1 (dosage if available)", "Medicine Name 2 (dosage if available)", ...]
+}
+
+For the `medicines` field, list every distinct medication or supplement mentioned in the prescription. Include the dosage if it appears right next to the name (e.g. 'Amoxicillin 500mg'). If no dosage is mentioned, just use the name. Do NOT include instructions like 'once daily' in the medicine name.
+Focus on clarity and providing actionable advice based on the prescribed medication."""
+
+        user_prompt = f"Here is the text extracted from the prescription:\n\n---BEGIN PRESCRIPTION---\n{raw_text}\n---END PRESCRIPTION---"
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"}
+        )
+
+        raw_json_str = response.choices[0].message.content
+        if not raw_json_str:
+            raise ValueError("Empty response from OpenAI.")
+
+        ai_response = json.loads(raw_json_str)
+
+        return {
+            "summary": ai_response.get("summary", "Could not generate summary."),
+            "severity": ai_response.get("severity", "Unknown"),
+            "comparison": ai_response.get("comparison", "No comparison available."),
+            "recommendations": ai_response.get("recommendations", []),
+            "medicines": ai_response.get("medicines", [])
+        }
+
+    except json.JSONDecodeError as e:
+        print(f"AI Engine Error (Prescription): Failed to parse JSON: {e}")
+        return _fallback_rx_response("Failed to parse AI response.")
+    except Exception as e:
+        print(f"AI Engine Error (Prescription): {e}")
+        return _fallback_rx_response(f"AI analysis failed: {str(e)}")
+
+def _fallback_rx_response(error_msg: str) -> Dict[str, Any]:
+    return {
+        "summary": error_msg,
+        "severity": "Unknown",
+        "comparison": "Unable to determine.",
+        "recommendations": []
+    }

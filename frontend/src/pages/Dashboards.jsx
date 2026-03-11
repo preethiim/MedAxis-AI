@@ -19,6 +19,9 @@ export const DoctorDashboard = () => {
     const [searchResult, setSearchResult] = useState(null);
     const [searchError, setSearchError] = useState('');
     const [searchLoading, setSearchLoading] = useState(false);
+    const [patientPrescriptions, setPatientPrescriptions] = useState([]);
+    const [rxCommentData, setRxCommentData] = useState({});   // { [rx_id]: text }
+    const [rxCommentPosting, setRxCommentPosting] = useState({});  // { [rx_id]: bool }
     const [profileImage, setProfileImage] = useState(null);
     const [profile, setProfile] = useState(null);
     const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -174,7 +177,7 @@ export const DoctorDashboard = () => {
 
     const handleSearch = async () => {
         if (!searchId.trim()) return;
-        setSearchLoading(true); setSearchError(''); setSearchResult(null);
+        setSearchLoading(true); setSearchError(''); setSearchResult(null); setPatientPrescriptions([]);
         try {
             const token = await currentUser.getIdToken();
             const res = await fetch(`${API_BASE_URL}/patient/lookup?health_id=${searchId.trim()}`, {
@@ -183,8 +186,46 @@ export const DoctorDashboard = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.detail || 'Not found');
             setSearchResult(data);
+
+            // Also fetch patient-uploaded prescriptions (with AI analysis)
+            if (data.patient?.uid) {
+                try {
+                    const rxRes = await fetch(`${API_BASE_URL}/doctor/patient-prescriptions?patient_uid=${data.patient.uid}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (rxRes.ok) {
+                        const rxData = await rxRes.json();
+                        setPatientPrescriptions(rxData.prescriptions || []);
+                    }
+                } catch (_) {}
+            }
         } catch (err) { setSearchError(err.message); }
         finally { setSearchLoading(false); }
+    };
+
+    // Post a doctor comment on a patient-uploaded prescription
+    const postRxComment = async (patientUid, rxId) => {
+        const comment = rxCommentData[rxId]?.trim();
+        if (!comment) return;
+        setRxCommentPosting(p => ({ ...p, [rxId]: true }));
+        try {
+            const token = await currentUser.getIdToken();
+            const res = await fetch(`${API_BASE_URL}/doctor/add-prescription-comment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ doctor_uid: currentUser.uid, patient_uid: patientUid, prescription_id: rxId, comment })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to post comment');
+            // Append comment locally so UI updates instantly
+            setPatientPrescriptions(prev => prev.map(rx =>
+                rx.id === rxId
+                    ? { ...rx, doctor_comments: [...(rx.doctor_comments || []), data.comment] }
+                    : rx
+            ));
+            setRxCommentData(p => ({ ...p, [rxId]: '' }));
+        } catch (err) { alert(err.message); }
+        finally { setRxCommentPosting(p => ({ ...p, [rxId]: false })); }
     };
 
     const tabs = [
@@ -276,33 +317,112 @@ export const DoctorDashboard = () => {
                                 </div>
                             )}
 
-                            {/* Prescription History Section */}
-                            <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                <h4 style={{ fontSize: '1.05rem' }}>Prescription History ({searchResult.prescriptions?.length || 0})</h4>
-                                <button className="btn-primary" onClick={() => { setPrescribePatientUid(searchResult.patient.uid); setShowPrescribeModal(true); }}>
-                                    + Add Prescription
-                                </button>
-                            </div>
-                            {searchResult.prescriptions?.length > 0 ? (
-                                searchResult.prescriptions.map((rx, i) => (
-                                    <div key={i} className="report-card" style={{ marginBottom: '0.75rem', borderLeft: '3px solid var(--primary)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                            <span style={{ fontWeight: 600, color: 'var(--primary)', fontSize: '0.9rem' }}>{rx.id}</span>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{new Date(rx.created_at).toLocaleDateString()}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                            {rx.medications?.map((m, j) => (
-                                                <div key={j} style={{ padding: '0.6rem', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
-                                                    <strong>{m.medicationCodeableConcept?.text}</strong> &mdash; <span style={{ color: 'var(--text-muted)' }}>{m.dosageInstruction?.[0]?.text}</span>
+                            {/* Patient-Uploaded Prescriptions with AI Analysis */}
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <h4 style={{ fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <Activity size={17} color="var(--primary)" /> Patient Prescriptions &amp; AI Analysis
+                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400 }}>({patientPrescriptions.length})</span>
+                                    </h4>
+                                    <button className="btn-primary" style={{ fontSize: '0.82rem', padding: '0.4rem 0.9rem' }} onClick={() => { setPrescribePatientUid(searchResult.patient.uid); setShowPrescribeModal(true); }}>
+                                        + New Prescription
+                                    </button>
+                                </div>
+
+                                {patientPrescriptions.length === 0 ? (
+                                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', padding: '1rem 0' }}>No uploaded prescriptions found for this patient.</p>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        {patientPrescriptions.map((rx) => {
+                                            const ai = rx.ai_analysis || {};
+                                            const severity = ai.severity || 'Unknown';
+                                            const severityColor = severity === 'High' ? 'var(--danger)' : severity === 'Moderate' ? 'var(--warning)' : severity === 'Low' ? 'var(--success)' : 'var(--text-muted)';
+                                            const rxId = rx.id;
+                                            return (
+                                                <div key={rxId} style={{ background: 'var(--gradient-card)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.25rem', borderLeft: `3px solid ${severityColor}` }}>
+                                                    {/* Header */}
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                        <div>
+                                                            <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{rx.filename || 'Prescription'}</div>
+                                                            {rx.uploaded_at && <div style={{ fontSize: '0.73rem', color: 'var(--text-dim)' }}>📅 {new Date(rx.uploaded_at?.seconds ? rx.uploaded_at.seconds * 1000 : rx.uploaded_at).toLocaleString()}</div>}
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '999px', background: `${severityColor}22`, color: severityColor, border: `1px solid ${severityColor}55` }}>
+                                                                Severity: {severity}
+                                                            </span>
+                                                            {rx.file_url && <a href={rx.file_url} target="_blank" rel="noreferrer" className="link" style={{ fontSize: '0.78rem' }}>View Doc →</a>}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* AI Summary */}
+                                                    {ai.summary && (
+                                                        <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--success)' }}>
+                                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--success)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>AI Summary</div>
+                                                            <p style={{ fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--text-main)' }}>{ai.summary}</p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Comparison */}
+                                                    {ai.comparison && (
+                                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '0.75rem' }}>&quot;{ai.comparison}&quot;</p>
+                                                    )}
+
+                                                    {/* Recommendations */}
+                                                    {ai.recommendations?.length > 0 && (
+                                                        <div style={{ padding: '0.65rem 0.9rem', background: 'rgba(99,102,241,0.07)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--primary)', marginBottom: '0.85rem' }}>
+                                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recommendations</div>
+                                                            {ai.recommendations.map((r, i) => <div key={i} style={{ fontSize: '0.83rem', color: 'var(--text-main)' }}>• {r}</div>)}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Medicines */}
+                                                    {ai.medicines?.length > 0 && (
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.85rem' }}>
+                                                            {ai.medicines.map((m, i) => (
+                                                                <span key={i} style={{ fontSize: '0.75rem', padding: '0.2rem 0.55rem', borderRadius: '999px', background: 'rgba(245,158,11,0.12)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.25)' }}>💊 {m}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Existing Doctor Comments */}
+                                                    {rx.doctor_comments?.length > 0 && (
+                                                        <div style={{ marginBottom: '0.85rem' }}>
+                                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Doctor Comments</div>
+                                                            {rx.doctor_comments.map((c, i) => (
+                                                                <div key={i} style={{ padding: '0.55rem 0.75rem', marginBottom: '0.3rem', borderLeft: '2px solid var(--accent)', background: 'rgba(139,92,246,0.05)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem' }}>
+                                                                    <div style={{ color: 'var(--text-main)' }}>{c.text}</div>
+                                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>{c.timestamp ? new Date(c.timestamp).toLocaleString() : ''}</div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Add Doctor Comment */}
+                                                    <div className="search-bar" style={{ marginTop: '0.5rem' }}>
+                                                        <input
+                                                            type="text"
+                                                            className="form-input"
+                                                            placeholder="Add clinical advice or comment..."
+                                                            value={rxCommentData[rxId] || ''}
+                                                            onChange={e => setRxCommentData(p => ({ ...p, [rxId]: e.target.value }))}
+                                                            onKeyDown={e => e.key === 'Enter' && postRxComment(searchResult.patient.uid, rxId)}
+                                                            style={{ margin: 0, flex: 1 }}
+                                                        />
+                                                        <button
+                                                            className="btn-primary"
+                                                            style={{ margin: 0, width: 'auto', fontSize: '0.85rem' }}
+                                                            disabled={rxCommentPosting[rxId] || !rxCommentData[rxId]?.trim()}
+                                                            onClick={() => postRxComment(searchResult.patient.uid, rxId)}
+                                                        >
+                                                            {rxCommentPosting[rxId] ? '⏳' : 'Post'}
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                        {rx.notes && <p style={{ fontSize: '0.8rem', marginTop: '0.75rem', color: 'var(--text-muted)' }}>Notes: {rx.notes}</p>}
+                                            );
+                                        })}
                                     </div>
-                                ))
-                            ) : (
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No prescriptions found.</p>
-                            )}
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

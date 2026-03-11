@@ -11,6 +11,7 @@ from firebase_admin import firestore, auth
 from routers.auth_helpers import (
     get_current_doctor_uid,
     DoctorCommentRequest,
+    PrescriptionCommentRequest,
     AlertResolveRequest,
     PrescriptionRequest,
     DoctorProfileUpdateRequest,
@@ -213,3 +214,79 @@ def update_doctor_profile(payload: DoctorProfileUpdateRequest, doctor_uid: str =
         return {"message": "Profile updated successfully.", "updates": updates}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
+
+
+@router.get("/doctor/patient-prescriptions")
+def get_patient_uploaded_prescriptions(
+    patient_uid: str,
+    doctor_uid: str = Depends(get_current_doctor_uid)
+):
+    """
+    Returns all patient-uploaded & AI-analyzed prescriptions for a given patient UID.
+    Doctor must be authenticated. Does NOT allow deletion.
+    """
+    try:
+        db = firestore.client()
+        docs = (
+            db.collection("fhir_prescriptions")
+            .document(patient_uid)
+            .collection("prescriptions")
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .stream()
+        )
+        prescriptions = []
+        for doc in docs:
+            d = doc.to_dict()
+            d["id"] = doc.id
+            prescriptions.append(d)
+        return {"prescriptions": prescriptions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/doctor/add-prescription-comment")
+def add_prescription_comment(
+    req: PrescriptionCommentRequest,
+    doctor_uid: str = Depends(get_current_doctor_uid)
+):
+    """
+    Allows a doctor to append a comment to a patient-uploaded prescription.
+    Comment is appended to the doctor_comments array on the prescription document.
+    Doctors may NOT delete prescriptions or patient data.
+    """
+    try:
+        db = firestore.client()
+
+        rx_ref = (
+            db.collection("fhir_prescriptions")
+            .document(req.patient_uid)
+            .collection("prescriptions")
+            .document(req.prescription_id)
+        )
+        rx_doc = rx_ref.get()
+        if not rx_doc.exists:
+            raise HTTPException(status_code=404, detail="Prescription not found.")
+
+        new_comment = {
+            "author": doctor_uid,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "type": "doctor_comment",
+            "text": req.comment,
+        }
+        existing = rx_doc.to_dict().get("doctor_comments", [])
+        existing.append(new_comment)
+        rx_ref.update({"doctor_comments": existing})
+
+        db.collection("audit_logs").document().set({
+            "action": "ADD_PRESCRIPTION_COMMENT",
+            "doctor_uid": doctor_uid,
+            "patient_uid": req.patient_uid,
+            "prescription_id": req.prescription_id,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+        })
+
+        return {"message": "Comment added successfully.", "comment": new_comment}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add comment: {str(e)}")

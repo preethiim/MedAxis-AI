@@ -204,6 +204,13 @@ class DoctorCommentRequest(BaseModel):
     comment: str
 
 
+class PrescriptionCommentRequest(BaseModel):
+    doctor_uid: str
+    patient_uid: str
+    prescription_id: str
+    comment: str
+
+
 class RoleAssignRequest(BaseModel):
     assigner_uid: str
     target_uid: str
