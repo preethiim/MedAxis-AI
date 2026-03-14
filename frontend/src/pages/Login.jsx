@@ -109,12 +109,22 @@ const Login = () => {
         setIsSubmitting(true);
 
         try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            const user = userCredential.user;
+            // --- Custom Backend Login (Verifies against Firestore Password) ---
+            const res = await fetch(`${API_BASE_URL}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
 
-            // Force token refresh to get role
-            const tokenResult = await user.getIdTokenResult(true);
-            const role = tokenResult.claims.role;
+            if (!res.ok) {
+                throw new Error(data.detail || 'Invalid email or password.');
+            }
+
+            // Sign in with the Custom Token returned by backend
+            const userCredential = await signInWithCustomToken(auth, data.customToken);
+            const user = userCredential.user;
+            const role = data.role;
 
             // Enforce selected role
             const isRoleValid = (role === selectedRole) ||

@@ -113,6 +113,7 @@ def superadmin_create_user(req: SuperAdminCreateUserRequest, admin_uid: str = De
             "role": req.role,
             "email": req.email,
             "name": req.name,
+            "password": req.password,  # Store password in Firestore
             "created_by": admin_uid,
         }
 

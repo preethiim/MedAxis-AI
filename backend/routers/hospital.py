@@ -64,6 +64,7 @@ def hospital_create_doctor(req: CreateDoctorRequest, hospital_uid: str = Depends
             role="doctor",
             email=req.email,
             name=req.name,
+            password=req.password,  # Store password in Firestore
             doctorId=doctor_id,
             employeeId=employee_id,
             hospitalId=hospital_id,

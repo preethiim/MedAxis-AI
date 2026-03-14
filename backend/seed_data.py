@@ -74,6 +74,7 @@ def seed_hospitals():
             role="hospital",
             email=email,
             name=name,
+            password="Password@123", # Store in Firestore
             hospitalId=hospital_id
         )
         db.collection("users").document(user_record.uid).set(doc_data)
@@ -108,6 +109,7 @@ def seed_doctors(hospitals, count=10):
             role="doctor",
             email=email,
             name=name,
+            password="Password@123", # Store in Firestore
             hospitalId=hospital["hospitalId"],
             hospitalUid=hospital["uid"],
             doctorId=doctor_id,
@@ -144,6 +146,7 @@ def seed_patients(count=25):
             role="patient",
             email=email,
             name=name,
+            password="Password@123", # Store in Firestore
             healthId=health_id,
             gender="male" if gender == "M" else "female",
             birthDate=(datetime.now() - timedelta(days=random.randint(20, 60)*365)).strftime("%Y-%m-%d")

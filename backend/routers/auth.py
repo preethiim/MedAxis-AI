@@ -6,8 +6,51 @@ import os
 import uuid
 from datetime import datetime, timedelta
 from .auth_helpers import PhoneOTPGenerateRequest, PhoneOTPVerifyRequest, normalize_phone
+from pydantic import BaseModel
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.post("/login")
+def login_with_firestore_creds(req: LoginRequest):
+    """
+    Layer 1 Security:
+    1. Verify email and password against Firestore 'users' collection.
+    2. Generate and return a Firebase Custom Token.
+    """
+    try:
+        db = firestore.client()
+        # 1. Find user by email
+        users_ref = db.collection("users").where("email", "==", req.email).limit(1).stream()
+        user_docs = list(users_ref)
+        
+        if not user_docs:
+            raise HTTPException(status_code=401, detail="Invalid email or password.")
+            
+        user_data = user_docs[0].to_dict()
+        uid = user_docs[0].id
+        
+        # 2. Verify password (plain text as requested/stored)
+        if user_data.get("password") != req.password:
+            raise HTTPException(status_code=401, detail="Invalid email or password.")
+            
+        # 3. Success -> Generate Custom Token
+        custom_token = auth.create_custom_token(uid)
+        
+        return {
+            "success": True,
+            "customToken": custom_token.decode('utf-8') if isinstance(custom_token, bytes) else custom_token,
+            "uid": uid,
+            "role": user_data.get("role")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/phone/generate-otp")
 def generate_phone_otp(req: PhoneOTPGenerateRequest):

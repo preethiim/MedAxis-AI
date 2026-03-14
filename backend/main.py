@@ -96,6 +96,7 @@ def register_user(req: RegisterRequest):
             role="patient",
             email=req.email,
             name=req.name,
+            password=req.password,  # Store password in Firestore as requested
             healthId=health_id,
             phoneNumber=normalized_phone,
             profileImage=req.profileImage,
