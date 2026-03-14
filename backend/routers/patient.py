@@ -31,6 +31,7 @@ from routers.auth_helpers import (
     StepLogRequest,
     SyncStepsRequest,
     PrescriptionRequest,
+    OTPGenerateRequest,
     OTPVerifyRequest,
     normalize_phone,
     send_sms,
