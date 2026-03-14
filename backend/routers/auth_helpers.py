@@ -79,6 +79,59 @@ def send_sms(to_number: str, message: str):
         traceback.print_exc()
         return False
 
+def send_email_otp(to_email: str, otp_code: str):
+    """
+    Sends an OTP via email using SMTP (e.g., Gmail App Password).
+    Expects EMAIL_SENDER and EMAIL_APP_PASSWORD in .env.
+    """
+    import os
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    sender_email = os.getenv("EMAIL_SENDER")
+    sender_password = os.getenv("EMAIL_APP_PASSWORD")
+
+    if not sender_email or not sender_password:
+        print(f"ERROR: Email credentials missing. OTP {otp_code} for {to_email} not sent.")
+        return False
+
+    message = MIMEMultipart("alternative")
+    message["Subject"] = "MedAxis AI - Your Security OTP"
+    message["From"] = f"MedAxis AI <{sender_email}>"
+    message["To"] = to_email
+
+    text = f"Your MedAxis AI security OTP is: {otp_code}\n\nThis code is valid for 5 minutes. If you did not request this, please ignore this email."
+    html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+        <div style="background-color: #ffffff; padding: 30px; border-radius: 12px; max-width: 500px; margin: auto; border: 1px solid #e0e0e0;">
+            <h2 style="color: #6366f1; text-align: center;">MedAxis AI Security</h2>
+            <p style="font-size: 1.1rem; color: #333 text-align: center;">Your one-time security code is:</p>
+            <div style="background-color: #f0fdf4; border: 2px dashed #10b981; padding: 15px; text-align: center; font-size: 2rem; font-weight: bold; color: #059669; letter-spacing: 5px; margin: 20px 0;">
+                {otp_code}
+            </div>
+            <p style="font-size: 0.9rem; color: #666; text-align: center;">This code is valid for <b>5 minutes</b>.</p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 0.8rem; color: #999; text-align: center;">If you didn't request this code, you can safely ignore this email.</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    message.attach(MIMEText(text, "plain"))
+    message.attach(MIMEText(html, "html"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, to_email, message.as_string())
+        print(f"DEBUG: Email OTP sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"ERROR: Failed to send email OTP: {e}")
+        return False
+
 def generate_unique_id(db, field: str, prefix: str, length: int, digits_only: bool = False) -> str:
     """
     Generate a prefixed ID that is guaranteed unique within the users collection.

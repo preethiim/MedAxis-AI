@@ -31,10 +31,10 @@ from routers.auth_helpers import (
     StepLogRequest,
     SyncStepsRequest,
     PrescriptionRequest,
-    OTPGenerateRequest,
     OTPVerifyRequest,
     normalize_phone,
     send_sms,
+    send_email_otp,
     REWARD_TIERS,
 )
 
@@ -739,6 +739,10 @@ def generate_patient_otp(req: OTPGenerateRequest):
                 if len(clean_phone) >= 10:
                     msg = f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes."
                     send_sms(clean_phone, msg)
+                
+                # Also send to Email
+                if user_data.get("email"):
+                    send_email_otp(user_data.get("email"), otp_code)
 
         return {"message": "OTP generated and sent successfully."}
     except Exception as e:

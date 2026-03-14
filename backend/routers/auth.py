@@ -5,7 +5,7 @@ import requests
 import os
 import uuid
 from datetime import datetime, timedelta
-from .auth_helpers import PhoneOTPGenerateRequest, PhoneOTPVerifyRequest, normalize_phone, send_sms
+from .auth_helpers import PhoneOTPGenerateRequest, PhoneOTPVerifyRequest, normalize_phone, send_sms, send_email_otp
 from pydantic import BaseModel
 
 class LoginRequest(BaseModel):
@@ -87,12 +87,15 @@ def generate_phone_otp(req: PhoneOTPGenerateRequest):
             "phoneNumber": req.phoneNumber
         })
         
-        # 4. Send via Twilio
+        # 4. Send via Twilio & Email Fallback
+        msg = f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes."
         if len(normalized_phone) >= 10:
-            msg = f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes."
             send_sms(normalized_phone, msg)
-        else:
-            print(f"DEBUG: Phone invalid. OTP: {otp_code}")
+        
+        # Also send to email if associated with the user
+        user_email = user_data.get("email")
+        if user_email:
+            send_email_otp(user_email, otp_code)
             
         return {"message": "OTP sent successfully", "success": True}
         
