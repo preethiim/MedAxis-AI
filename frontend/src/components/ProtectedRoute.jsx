@@ -28,6 +28,12 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
         return <Navigate to="/login" replace />;
     }
 
+    // Layer 2 & 3 Enforcement for Patients
+    if (userRole === 'patient' && useAuth().patientAuthStep < 4) {
+        console.warn("Blocking dashboard access: Patients must complete all 3 security layers.");
+        return <Navigate to="/login" replace />;
+    }
+
     return children;
 };
 

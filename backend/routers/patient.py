@@ -34,6 +34,7 @@ from routers.auth_helpers import (
     OTPGenerateRequest,
     OTPVerifyRequest,
     normalize_phone,
+    send_sms,
     REWARD_TIERS,
 )
 
@@ -727,8 +728,7 @@ def generate_patient_otp(req: OTPGenerateRequest):
         
         # For this college project, we just print it to the terminal instead of sending a real SMS/Email
         print(f"\n{'='*50}\n[SECURITY LAYER 2] OTP for Patient {req.uid}: {otp_code}\n{'='*50}\n")
-        
-        # ── Fast2SMS Integration ──
+        # ── Twilio Integration ──
         # We need the user's phone number from Firestore to send the SMS
         user_doc = db.collection("users").document(req.uid).get()
         if user_doc.exists:
@@ -736,26 +736,9 @@ def generate_patient_otp(req: OTPGenerateRequest):
             phone_number = user_data.get("phoneNumber")
             if phone_number:
                 clean_phone = normalize_phone(phone_number)
-                api_key = os.getenv("FAST2SMS_API_KEY")
-                if api_key and len(clean_phone) >= 10:
-                    try:
-                        print(f"DEBUG: Sending Step 2 OTP {otp_code} to {clean_phone} via Fast2SMS...")
-                        # Using params for better encoding
-                        response = requests.get(
-                            "https://www.fast2sms.com/dev/bulkV2",
-                            params={
-                                "authorization": api_key,
-                                "route": "q",
-                                "message": f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes.",
-                                "language": "english",
-                                "flash": "0",
-                                "numbers": clean_phone
-                            },
-                            timeout=5
-                        )
-                        print(f"Fast2SMS Step 2 Response: {response.status_code} - {response.text}")
-                    except Exception as sms_err:
-                        print(f"Failed to send Step 2 SMS via Fast2SMS: {sms_err}")
+                if len(clean_phone) >= 10:
+                    msg = f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes."
+                    send_sms(clean_phone, msg)
 
         return {"message": "OTP generated and sent successfully."}
     except Exception as e:

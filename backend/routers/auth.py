@@ -5,7 +5,7 @@ import requests
 import os
 import uuid
 from datetime import datetime, timedelta
-from .auth_helpers import PhoneOTPGenerateRequest, PhoneOTPVerifyRequest, normalize_phone
+from .auth_helpers import PhoneOTPGenerateRequest, PhoneOTPVerifyRequest, normalize_phone, send_sms
 from pydantic import BaseModel
 
 class LoginRequest(BaseModel):
@@ -87,31 +87,12 @@ def generate_phone_otp(req: PhoneOTPGenerateRequest):
             "phoneNumber": req.phoneNumber
         })
         
-        # 4. Send via Fast2SMS
-        api_key = os.getenv("FAST2SMS_API_KEY")
-        # Use normalized phone for Fast2SMS (10 digits)
-        clean_phone_for_sms = normalized_phone
-        
-        if api_key and len(clean_phone_for_sms) >= 10:
-            try:
-                print(f"DEBUG: Sending OTP {otp_code} to {clean_phone_for_sms} via Fast2SMS...")
-                response = requests.get(
-                    "https://www.fast2sms.com/dev/bulkV2",
-                    params={
-                        "authorization": api_key,
-                        "route": "q",
-                        "message": f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes.",
-                        "language": "english",
-                        "flash": "0",
-                        "numbers": clean_phone_for_sms
-                    },
-                    timeout=5
-                )
-                print(f"DEBUG: Fast2SMS Response: {response.status_code} - {response.text}")
-            except Exception as e:
-                print(f"ERROR: Fast2SMS failed: {e}")
+        # 4. Send via Twilio
+        if len(normalized_phone) >= 10:
+            msg = f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes."
+            send_sms(normalized_phone, msg)
         else:
-            print(f"DEBUG: FAST2SMS_API_KEY missing or phone invalid. OTP: {otp_code}")
+            print(f"DEBUG: Phone invalid. OTP: {otp_code}")
             
         return {"message": "OTP sent successfully", "success": True}
         

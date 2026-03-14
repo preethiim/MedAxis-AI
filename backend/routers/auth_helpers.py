@@ -36,6 +36,39 @@ def normalize_phone(phone: str) -> str:
     digits = "".join(filter(str.isdigit, phone))
     return digits[-10:] if len(digits) >= 10 else digits
 
+def send_sms(to_number: str, message: str):
+    """
+    Sends an SMS using Twilio.
+    Expects TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in .env.
+    """
+    import os
+    from twilio.rest import Client
+    
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_PHONE_NUMBER")
+    
+    if not account_sid or not auth_token or not from_number:
+        print(f"ERROR: Twilio credentials missing. Message would have been: {message}")
+        return False
+        
+    try:
+        # Ensure number has +91 if it's 10 digits
+        if len(to_number) == 10:
+            to_number = f"+91{to_number}"
+            
+        client = Client(account_sid, auth_token)
+        msg = client.messages.create(
+            body=message,
+            from_=from_number,
+            to=to_number
+        )
+        print(f"DEBUG: Twilio SMS sent. SID: {msg.sid}")
+        return True
+    except Exception as e:
+        print(f"ERROR: Twilio failed: {e}")
+        return False
+
 def generate_unique_id(db, field: str, prefix: str, length: int, digits_only: bool = False) -> str:
     """
     Generate a prefixed ID that is guaranteed unique within the users collection.

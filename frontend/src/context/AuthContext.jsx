@@ -38,7 +38,10 @@ export const AuthProvider = ({ children }) => {
         return unsubscribe;
     }, []);
 
+    const [patientAuthStep, setPatientAuthStep] = useState(0);
+
     const logout = () => {
+        setPatientAuthStep(0);
         return signOut(auth);
     };
 
@@ -46,6 +49,8 @@ export const AuthProvider = ({ children }) => {
         currentUser,
         userRole,
         loading,
+        patientAuthStep,
+        setPatientAuthStep,
         logout
     };
 

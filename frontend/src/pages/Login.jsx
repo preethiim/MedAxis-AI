@@ -17,7 +17,17 @@ const Login = () => {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
     // 3-Layer Security States for Patients
-    const [authStep, setAuthStep] = useState(0); // 0 = Role, 1 = Email, 2 = OTP, 3 = Face, 4 = Done
+    const { userRole, currentUser, loading, patientAuthStep, setPatientAuthStep } = useAuth();
+    
+    // Local authStep syncs with context
+    const [authStep, setAuthStepLocal] = useState(0); // 0 = Role, 1 = Email, 2 = OTP, 3 = Face, 4 = Done
+
+    const setAuthStep = (step) => {
+        setAuthStepLocal(step);
+        setPatientAuthStep(step);
+    };
+
+    const navigate = useNavigate();
     const [selectedRole, setSelectedRole] = useState(null); // 'patient' | 'doctor' | 'admin'
     const [patientUid, setPatientUid] = useState(null); // Holds UID during steps 2 & 3
     const [storedFaceDescriptor, setStoredFaceDescriptor] = useState(null); // Float32Array equivalent stored in DB
@@ -30,9 +40,6 @@ const Login = () => {
     const [otp, setOtp] = useState('');
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [confirmationResult, setConfirmationResult] = useState(null);
-
-    const { userRole, currentUser, loading } = useAuth();
-    const navigate = useNavigate();
 
     // Redirect if completely logged in (Step 4 for patients, or immediately for others)
     useEffect(() => {
