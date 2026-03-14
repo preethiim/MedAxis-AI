@@ -68,7 +68,7 @@ const Login = () => {
                 setModelsLoaded(true);
             } catch (err) {
                 console.error("Failed to load face-api models:", err);
-                setError("Failed to initialize camera security models. Ensure models are in /public/models.");
+                setError(`Failed to initialize models from CDN: ${err.message || 'Network Error'}`);
             }
         };
 
