@@ -18,14 +18,20 @@ const Register = () => {
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const { currentUser, userRole } = useAuth();
+    const { currentUser, userRole, patientAuthStep } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
         if (currentUser && userRole) {
-            navigate(`/dashboard/${userRole}`);
+            if (userRole === 'patient') {
+                if (patientAuthStep === 4) {
+                    navigate(`/dashboard/${userRole}`);
+                }
+            } else {
+                navigate(`/dashboard/${userRole}`);
+            }
         }
-    }, [currentUser, userRole, navigate]);
+    }, [currentUser, userRole, patientAuthStep, navigate]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
