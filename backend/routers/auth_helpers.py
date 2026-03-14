@@ -42,7 +42,15 @@ def send_sms(to_number: str, message: str):
     Expects TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in .env.
     """
     import os
+    import socket
     from twilio.rest import Client
+    
+    # Force IPv4 for reliable resolution on this machine
+    old_getaddrinfo = socket.getaddrinfo
+    def new_getaddrinfo(*args, **kwargs):
+        responses = old_getaddrinfo(*args, **kwargs)
+        return [r for r in responses if r[0] == socket.AF_INET]
+    socket.getaddrinfo = new_getaddrinfo
     
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
@@ -66,7 +74,9 @@ def send_sms(to_number: str, message: str):
         print(f"DEBUG: Twilio SMS sent. SID: {msg.sid}")
         return True
     except Exception as e:
+        import traceback
         print(f"ERROR: Twilio failed: {e}")
+        traceback.print_exc()
         return False
 
 def generate_unique_id(db, field: str, prefix: str, length: int, digits_only: bool = False) -> str:
