@@ -3,6 +3,10 @@ import firebase_admin
 from firebase_admin import credentials
 
 import json
+from dotenv import load_dotenv
+
+# Load environment variables to ensure GOOGLE_APPLICATION_CREDENTIALS is found
+load_dotenv()
 
 def initialize_firebase():
     """

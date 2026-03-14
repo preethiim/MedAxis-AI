@@ -1,15 +1,12 @@
-import firebase_admin
-from firebase_admin import auth, credentials
+from firebase_config import initialize_firebase
+from firebase_admin import auth
 import os
 
 def test_sign_blob():
     print("Testing IAM signBlob permission by attempting to create a custom token...")
     try:
-        # Initialize Firebase if not already
-        if not firebase_admin._apps:
-            # We use the project ID from environment or default
-            project_id = os.environ.get("VITE_FIREBASE_PROJECT_ID", "medaxis-ai")
-            firebase_admin.initialize_app(options={'projectId': project_id})
+        # Initialize Firebase using the actual app logic
+        initialize_firebase()
         
         # Attempt to create a custom token for a dummy UID
         # This triggers the signBlob internally
