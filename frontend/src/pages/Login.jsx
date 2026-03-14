@@ -20,7 +20,7 @@ const Login = () => {
     const { userRole, currentUser, loading, patientAuthStep, setPatientAuthStep } = useAuth();
     
     // Local authStep syncs with context
-    const [authStep, setAuthStepLocal] = useState(0); // 0 = Role, 1 = Email, 2 = OTP, 3 = Face, 4 = Done
+    const [authStep, setAuthStepLocal] = useState(1); // 1 = Login (Email/Phone), 2 = OTP, 3 = Face, 4 = Done
 
     const setAuthStep = (step) => {
         setAuthStepLocal(step);
@@ -28,7 +28,7 @@ const Login = () => {
     };
 
     const navigate = useNavigate();
-    const [selectedRole, setSelectedRole] = useState(null); // 'patient' | 'doctor' | 'admin'
+    const [selectedRole, setSelectedRole] = useState(null); // Set dynamically after Layer 1 login
     const [patientUid, setPatientUid] = useState(null); // Holds UID during steps 2 & 3
     const [storedFaceDescriptor, setStoredFaceDescriptor] = useState(null); // Float32Array equivalent stored in DB
     const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -144,19 +144,9 @@ const Login = () => {
             const userCredential = await signInWithCustomToken(auth, data.customToken);
             const user = userCredential.user;
             const role = data.role;
+            setSelectedRole(role);
 
-            // Enforce selected role
-            const isRoleValid = (role === selectedRole) ||
-                (selectedRole === 'admin' && (role === 'hospital' || role === 'superadmin'));
-
-            if (!isRoleValid && role) {
-                await auth.signOut();
-                setError(`Access Denied: You selected the ${selectedRole} portal but your account is registered as a ${role}.`);
-                setIsSubmitting(false);
-                return;
-            }
-
-            if (selectedRole === 'patient') {
+            if (role === 'patient') {
                 const userDocRef = doc(db, 'users', user.uid);
                 const userDocSnap = await getDoc(userDocRef);
 
@@ -352,6 +342,26 @@ const Login = () => {
             
             // Sign in with the Custom Token returned by backend
             await signInWithCustomToken(auth, data.customToken);
+            const role = data.role;
+            setSelectedRole(role);
+
+            if (role === 'patient') {
+                const userDocRef = doc(db, 'users', auth.currentUser.uid);
+                const userDocSnap = await getDoc(userDocRef);
+
+                if (userDocSnap.exists() && userDocSnap.data().faceData) {
+                    setStoredFaceDescriptor(userDocSnap.data().faceData);
+                } else {
+                    setStoredFaceDescriptor(null);
+                }
+
+                setPatientUid(auth.currentUser.uid);
+                const token = await auth.currentUser.getIdToken();
+                await generateBackendOTP(auth.currentUser.uid, token);
+                setAuthStep(2);
+            } else {
+                setAuthStep(4);
+            }
         } catch (err) {
             setError(err.message);
             setIsSubmitting(false);
@@ -365,10 +375,10 @@ const Login = () => {
                     <img src="/logo.png" alt="MedAxis AI Logo" style={{ height: '56px', objectFit: 'contain' }} />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                    {authStep > 0 && (
+                    {authStep > 1 && (
                         <button
                             type="button"
-                            onClick={() => { setAuthStep(0); setSelectedRole(null); setError(''); }}
+                            onClick={() => { setAuthStep(1); setError(''); }}
                             style={{ position: 'absolute', left: 0, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem', padding: '0.5rem 0' }}
                         >
                             &larr; Back
@@ -378,7 +388,7 @@ const Login = () => {
                 </div>
 
                 <p className="auth-subtitle" style={{ marginTop: '0.5rem' }}>
-                    {authStep === 0 ? "Select your portal to continue" : `Log in to MedAxis AI as ${selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}`}
+                    {authStep === 1 ? "Sign in to MedAxis AI" : `Log in to MedAxis AI as ${selectedRole?.charAt(0).toUpperCase() + selectedRole?.slice(1)}`}
                 </p>
 
                 {error && <div className="error-msg">{error}</div>}
@@ -386,52 +396,6 @@ const Login = () => {
                 {currentUser && !userRole && !loading && (
                     <div style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.9rem', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
                         <strong>Account Created!</strong> You are signed in via {currentUser.email ? 'OAuth' : 'Phone'}, but your account has not been assigned a system role (Patient/Doctor/Hospital) yet. Please contact your hospital administrator.
-                    </div>
-                )}
-
-                {authStep === 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
-                        <button
-                            onClick={() => { setSelectedRole('patient'); setAuthStep(1); setLoginMethod('email'); }}
-                            style={{ padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.05)', color: 'white', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
-                            onMouseOver={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
-                            onMouseOut={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
-                        >
-                            Patient Portal
-                        </button>
-                        <button
-                            onClick={() => { setSelectedRole('doctor'); setAuthStep(1); setLoginMethod('email'); }}
-                            style={{ padding: '1rem', borderRadius: '8px', border: '1px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
-                            onMouseOver={(e) => e.target.style.background = 'rgba(16, 185, 129, 0.2)'}
-                            onMouseOut={(e) => e.target.style.background = 'rgba(16, 185, 129, 0.1)'}
-                        >
-                            Doctor Portal
-                        </button>
-                        <button
-                            onClick={() => { setSelectedRole('admin'); setAuthStep(1); setLoginMethod('email'); }}
-                            style={{ padding: '1rem', borderRadius: '8px', border: '1px solid #6366f1', background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
-                            onMouseOver={(e) => e.target.style.background = 'rgba(99, 102, 241, 0.2)'}
-                            onMouseOut={(e) => e.target.style.background = 'rgba(99, 102, 241, 0.1)'}
-                        >
-                            Administrator Portal
-                        </button>
-                    </div>
-                )}
-
-                {authStep > 0 && (
-                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '8px' }}>
-                        <button
-                            onClick={() => setLoginMethod('email')}
-                            style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: loginMethod === 'email' ? 'var(--primary)' : 'transparent', color: loginMethod === 'email' ? 'white' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}
-                        >
-                            Email
-                        </button>
-                        <button
-                            onClick={() => setLoginMethod('phone')}
-                            style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', background: loginMethod === 'phone' ? 'var(--primary)' : 'transparent', color: loginMethod === 'phone' ? 'white' : 'var(--text-muted)', border: 'none', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}
-                        >
-                            Phone OTP
-                        </button>
                     </div>
                 )}
 
