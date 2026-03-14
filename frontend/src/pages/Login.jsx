@@ -59,7 +59,7 @@ const Login = () => {
     useEffect(() => {
         const loadModels = async () => {
             try {
-                const MODEL_URL = '/models';
+                const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
                 await Promise.all([
                     faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
