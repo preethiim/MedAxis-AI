@@ -39,6 +39,7 @@ const Login = () => {
     const [phoneNumber, setPhoneNumber] = useState('');
     const [otp, setOtp] = useState('');
     const [isOtpSent, setIsOtpSent] = useState(false);
+    const [resendTimer, setResendTimer] = useState(0);
     const [confirmationResult, setConfirmationResult] = useState(null);
 
     // Redirect if completely logged in (Step 4 for patients, or immediately for others)
@@ -101,6 +102,17 @@ const Login = () => {
         };
         resumeSession();
     }, [currentUser, userRole, loading, authStep]);
+    
+    // Timer for Resend OTP
+    useEffect(() => {
+        let interval;
+        if (resendTimer > 0) {
+            interval = setInterval(() => {
+                setResendTimer(prev => prev - 1);
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [resendTimer]);
 
     const setupRecaptcha = () => {
         if (!window.recaptchaVerifier) {
@@ -170,7 +182,7 @@ const Login = () => {
         }
     };
 
-    const generateBackendOTP = async (uid, token) => {
+    const generateBackendOTP = async (uid, token, resend = false) => {
         try {
             const res = await fetch(`${API_BASE_URL}/patient/generate-otp`, {
                 method: 'POST',
@@ -180,6 +192,12 @@ const Login = () => {
                 },
                 body: JSON.stringify({ uid: uid })
             });
+            if (!resend) {
+                setResendTimer(30); // Start 30s cooldown on initial or resend
+            }
+            if (!resend && res) {
+                // optional: show success toast/message
+            }
             if (!res.ok) {
                 const data = await res.json();
                 throw new Error(data.detail || "Failed to generate OTP");
@@ -307,6 +325,7 @@ const Login = () => {
             if (!res.ok) throw new Error(data.detail || "Failed to send OTP");
             
             setIsOtpSent(true);
+            setResendTimer(30);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -508,6 +527,20 @@ const Login = () => {
                                         <button type="button" onClick={() => setIsOtpSent(false)} style={{ background: 'none', border: 'none', color: 'var(--primary)', width: '100%', marginTop: '1rem', cursor: 'pointer', fontSize: '0.9rem' }}>
                                             Change Phone Number
                                         </button>
+                                        
+                                        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                                            {resendTimer > 0 ? (
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Resend code in {resendTimer}s</span>
+                                            ) : (
+                                                <button 
+                                                    type="button" 
+                                                    onClick={handleSendOtp} 
+                                                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                                                >
+                                                    Resend Code
+                                                </button>
+                                            )}
+                                        </div>
                                     </form>
                                 )}
                             </div>
@@ -540,6 +573,24 @@ const Login = () => {
                         <button type="submit" className="btn-primary" disabled={isSubmitting}>
                             {isSubmitting ? <span className="loader"></span> : 'Verify PIN'}
                         </button>
+                        
+                        <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+                            {resendTimer > 0 ? (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Resend PIN in {resendTimer}s</span>
+                            ) : (
+                                <button 
+                                    type="button" 
+                                    onClick={async () => {
+                                        const token = await currentUser.getIdToken();
+                                        await generateBackendOTP(currentUser.uid, token, true);
+                                        setResendTimer(30);
+                                    }} 
+                                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                                >
+                                    Resend Security PIN
+                                </button>
+                            )}
+                        </div>
                     </form>
                 )}
 
