@@ -99,11 +99,11 @@ def generate_phone_otp(req: PhoneOTPGenerateRequest):
                     "https://www.fast2sms.com/dev/bulkV2",
                     params={
                         "authorization": api_key,
-                        "route": "otp",
-                        "variables_values": otp_code,
-                        "numbers": clean_phone_for_sms,
+                        "route": "q",
+                        "message": f"Your MedAxis AI OTP is: {otp_code}. Valid for 5 minutes.",
+                        "language": "english",
                         "flash": "0",
-                        "schedule_time": ""
+                        "numbers": clean_phone_for_sms
                     },
                     timeout=5
                 )
