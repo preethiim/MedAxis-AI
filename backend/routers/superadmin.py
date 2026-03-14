@@ -147,6 +147,54 @@ def superadmin_create_user(req: SuperAdminCreateUserRequest, admin_uid: str = De
             raise HTTPException(status_code=400, detail="The email address is already in use.")
         raise HTTPException(status_code=500, detail=f"Failed to create user: {error_msg}")
 
+from pydantic import BaseModel
+class EditPasswordRequest(BaseModel):
+    new_password: str
+
+@router.put("/superadmin/edit-password/{target_uid}")
+def superadmin_edit_password(target_uid: str, req: EditPasswordRequest, admin_uid: str = Depends(get_current_superadmin_uid)):
+    """
+    SuperAdmin edits a user's password.
+    Updates in Firebase Auth and also in the Firestore document if password is stored there.
+    """
+    from firebase_admin import auth as fb_auth
+    try:
+        try:
+            target_record = fb_auth.get_user(target_uid)
+            if (target_record.custom_claims or {}).get("role") == "superadmin" and target_uid != admin_uid:
+                raise HTTPException(status_code=403, detail="Cannot edit another super admin's password.")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=404, detail="User not found.")
+
+        if len(req.new_password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+        # 1. Update in Firebase Auth
+        fb_auth.update_user(target_uid, password=req.new_password)
+
+        # 2. Update in Firestore (since password is inconsistently stored there by create_user)
+        db = firestore.client()
+        user_ref = db.collection("users").document(target_uid)
+        
+        # We only update if the document exists
+        if user_ref.get().exists:
+            user_ref.update({"password": req.new_password})
+
+        db.collection("audit_logs").document().set({
+            "action": "SUPERADMIN_EDIT_PASSWORD",
+            "admin_uid": admin_uid,
+            "target_uid": target_uid,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+        })
+
+        return {"success": True, "message": f"Password for {target_uid} updated successfully."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update password: {str(e)}")
+
 
 @router.delete("/superadmin/delete-user/{target_uid}")
 def superadmin_delete_user(target_uid: str, admin_uid: str = Depends(get_current_superadmin_uid)):

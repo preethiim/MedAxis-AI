@@ -70,6 +70,46 @@ const CreateUserForm = ({ role, onClose, onCreated, getToken }) => {
     );
 };
 
+// ─── Edit Password Form ────────────────────────────────────────────────────────
+const EditPasswordForm = ({ uid, onClose, getToken }) => {
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState('');
+    const [success, setSuccess] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true); setErr(''); setSuccess('');
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_BASE_URL}/superadmin/edit-password/${uid}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ new_password: password })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to update password');
+            setSuccess('Password updated successfully!');
+            setTimeout(onClose, 1500);
+        } catch (e) { setErr(e.message); }
+        finally { setLoading(false); }
+    };
+
+    return (
+        <form onSubmit={handleSubmit}>
+            <div className="form-group">
+                <label className="form-label">New Password</label>
+                <input className="form-input" type="password" placeholder="Min 6 characters" minLength={6} value={password} onChange={e => setPassword(e.target.value)} required />
+            </div>
+            {err && <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem' }}>{err}</div>}
+            {success && <div style={{ color: '#10b981', fontSize: '0.85rem', marginBottom: '1rem' }}>{success}</div>}
+            <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={loading}>
+                {loading ? 'Updating...' : `Update Password`}
+            </button>
+        </form>
+    );
+};
+
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 const SuperAdminDashboard = () => {
     const { currentUser, logout } = useAuth();
@@ -86,6 +126,8 @@ const SuperAdminDashboard = () => {
 
     // Create modal state
     const [createModal, setCreateModal] = useState(null); // null | 'patient' | 'doctor' | 'hospital'
+    // Edit password modal state
+    const [editPasswordModal, setEditPasswordModal] = useState(null); // null | { uid, name }
     // Delete confirmation state
     const [deleteConfirm, setDeleteConfirm] = useState(null); // null | { uid, name, role }
     const [deleteLoading, setDeleteLoading] = useState(false);
@@ -207,12 +249,20 @@ const SuperAdminDashboard = () => {
                                             </span>
                                         </td>
                                         <td style={{ padding: '0.75rem' }}>
-                                            <button
-                                                onClick={() => setDeleteConfirm({ uid: u.uid || u.id, name: u.name || u.email, role: roleKey })}
-                                                style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', padding: '0.3rem 0.6rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}
-                                            >
-                                                <Trash2 size={13} /> Delete
-                                            </button>
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button
+                                                    onClick={() => setEditPasswordModal({ uid: u.uid || u.id, name: u.name || u.email })}
+                                                    style={{ background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: '6px', color: '#34d399', padding: '0.3rem 0.6rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}
+                                                >
+                                                    <Shield size={13} /> Edit Password
+                                                </button>
+                                                <button
+                                                    onClick={() => setDeleteConfirm({ uid: u.uid || u.id, name: u.name || u.email, role: roleKey })}
+                                                    style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', padding: '0.3rem 0.6rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}
+                                                >
+                                                    <Trash2 size={13} /> Delete
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -407,6 +457,17 @@ const SuperAdminDashboard = () => {
                         role={createModal}
                         onClose={() => setCreateModal(null)}
                         onCreated={handleUserCreated}
+                        getToken={() => currentUser.getIdToken()}
+                    />
+                </Modal>
+            )}
+
+            {/* Edit Password Modal */}
+            {editPasswordModal && (
+                <Modal title={`Edit Password for ${editPasswordModal.name}`} onClose={() => setEditPasswordModal(null)}>
+                    <EditPasswordForm
+                        uid={editPasswordModal.uid}
+                        onClose={() => setEditPasswordModal(null)}
                         getToken={() => currentUser.getIdToken()}
                     />
                 </Modal>
