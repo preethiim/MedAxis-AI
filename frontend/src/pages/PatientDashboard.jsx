@@ -113,8 +113,8 @@ const PatientDashboard = () => {
                     setProfileImage(data.profileImage || null);
                     setLastCheckupDate(data.lastCheckupDate || '');
                     setProfile({
-                        firstName: data.firstName || '',
-                        lastName: data.lastName || '',
+                        firstName: data.firstName || data.name?.split(' ')[0] || '',
+                        lastName: data.lastName || (data.name?.includes(' ') ? data.name.split(' ').slice(1).join(' ') : ''),
                         gender: data.gender || '',
                         birthDate: data.birthDate || ''
                     });

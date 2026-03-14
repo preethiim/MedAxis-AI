@@ -88,18 +88,44 @@ def register_user(req: RegisterRequest):
         db = firestore.client()
         health_id = generate_unique_id(db, "healthId", "PAT-", 6)
         
+        # Split name for dashboard consistency
+        name_parts = req.name.strip().split(" ", 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else ""
+
         # Normalize phone number before saving
         normalized_phone = normalize_phone(req.phoneNumber)
         
+        # Handle base64 profile image if provided
+        profile_image_url = req.profileImage
+        if profile_image_url and profile_image_url.startswith("data:image/"):
+            try:
+                import base64
+                from firebase_admin import storage
+                header, encoded = profile_image_url.split(",", 1)
+                mime_type = header.split(";")[0].split(":")[1]
+                file_ext = mime_type.split("/")[1]
+                image_data = base64.b64decode(encoded)
+                
+                bucket = storage.bucket()
+                blob = bucket.blob(f"profile_images/{user_record.uid}.{file_ext}")
+                blob.upload_from_string(image_data, content_type=mime_type)
+                blob.make_public()
+                profile_image_url = blob.public_url
+            except Exception as img_err:
+                print(f"Base64 image upload failed during registration: {img_err}")
+
         user_data = build_standard_user_doc(
             uid=user_record.uid,
             role="patient",
             email=req.email,
             name=req.name,
+            firstName=first_name,
+            lastName=last_name,
             password=req.password,  # Store password in Firestore as requested
             healthId=health_id,
             phoneNumber=normalized_phone,
-            profileImage=req.profileImage,
+            profileImage=profile_image_url,
             height=req.height,
             weight=req.weight,
             bmi=req.bmi

@@ -4,7 +4,13 @@ import { useAuth } from '../context/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-export const ProfileImageUpload = ({ currentImage, onImageUpdate }) => {
+export const ProfileImageUpload = ({
+    currentImage,
+    onImageUpdate,
+    currentImageUrl, // Aliases for Register.jsx
+    onUploadComplete,
+    uid
+}) => {
     const { currentUser } = useAuth();
     const [previewUrl, setPreviewUrl] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
@@ -12,6 +18,10 @@ export const ProfileImageUpload = ({ currentImage, onImageUpdate }) => {
     const [error, setError] = useState('');
 
     const fileInputRef = useRef(null);
+
+    // Resolve which prop to use
+    const activeImage = currentImage || currentImageUrl;
+    const activeUpdateFn = onImageUpdate || onUploadComplete;
 
     const defaultIcon = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png";
 
@@ -32,16 +42,20 @@ export const ProfileImageUpload = ({ currentImage, onImageUpdate }) => {
 
         setSelectedFile(file);
 
-        // Show local preview
+        // Show local preview and pass to parent for registration
         const reader = new FileReader();
         reader.onloadend = () => {
             setPreviewUrl(reader.result);
+            // If we're in registration (no currentUser), pass base64 to parent immediately
+            if (!currentUser && activeUpdateFn) {
+                activeUpdateFn(reader.result);
+            }
         };
         reader.readAsDataURL(file);
     };
 
     const handleUpload = async () => {
-        if (!selectedFile) return;
+        if (!selectedFile || !currentUser) return;
         setLoading(true);
         setError('');
 
@@ -63,8 +77,8 @@ export const ProfileImageUpload = ({ currentImage, onImageUpdate }) => {
 
             setPreviewUrl(null);
             setSelectedFile(null);
-            if (onImageUpdate) {
-                onImageUpdate(data.profileImage);
+            if (activeUpdateFn) {
+                activeUpdateFn(data.profileImage);
             }
         } catch (err) {
             setError(err.message);

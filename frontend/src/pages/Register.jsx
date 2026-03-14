@@ -138,9 +138,9 @@ const Register = () => {
                         <label className="form-label">Profile Image (Required for Face Login)</label>
                         <div style={{ marginBottom: '1rem' }}>
                             <ProfileImageUpload
-                                currentImageUrl={formData.profileImage}
-                                onUploadComplete={(url) => setFormData(prev => ({ ...prev, profileImage: url }))}
-                                uid="temp_registration" // Usually UID is generated later, passing temp to component
+                                currentImage={formData.profileImage}
+                                onImageUpdate={(url) => setFormData(prev => ({ ...prev, profileImage: url }))}
+                                uid="temp_registration"
                             />
                             {!formData.profileImage && (
                                 <small style={{ color: '#ef4444', display: 'block', marginTop: '0.25rem' }}>
