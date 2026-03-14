@@ -18,14 +18,15 @@ def initialize_firebase():
                 cert_dict = json.loads(os.environ.get("FIREBASE_CREDENTIALS_JSON"))
                 cred = credentials.Certificate(cert_dict)
                 print("Using FIREBASE_CREDENTIALS_JSON for Firebase Auth")
-            elif os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-                # Local Development: Read from path
-                cred = credentials.ApplicationDefault()
-                print("Using GOOGLE_APPLICATION_CREDENTIALS for Firebase Auth")
+            elif os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") and os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")):
+                # Local Development: Read explicitly from JSON key file
+                # This avoids IAM signBlob permission issues as signing happens locally
+                cred = credentials.Certificate(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
+                print(f"Using service account key file: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
             else:
-                # Cloud Run / GCP: Use Application Default Credentials automatically
+                # Cloud Run / GCP or Fallback: Use Application Default Credentials
                 cred = credentials.ApplicationDefault()
-                print("Using Application Default Credentials (Cloud Run/GCP)")
+                print("Using Application Default Credentials (Cloud Run/GCP/ADC)")
             
             # Allow bucket customization via environment, default to MedAxis
             bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "medaxis-ai.firebasestorage.app")
