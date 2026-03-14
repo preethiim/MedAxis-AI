@@ -22,11 +22,23 @@ def initialize_firebase():
                 cert_dict = json.loads(os.environ.get("FIREBASE_CREDENTIALS_JSON"))
                 cred = credentials.Certificate(cert_dict)
                 print("Using FIREBASE_CREDENTIALS_JSON for Firebase Auth")
-            elif os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") and os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")):
-                # Local Development: Read explicitly from JSON key file
-                # This avoids IAM signBlob permission issues as signing happens locally
-                cred = credentials.Certificate(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
-                print(f"Using service account key file: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
+            elif os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+                cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+                # If relative path, make it absolute based on this file's directory
+                if not os.path.isabs(cred_path):
+                    backend_dir = os.path.dirname(os.path.abspath(__file__))
+                    abs_path = os.path.join(backend_dir, cred_path)
+                    if os.path.exists(abs_path):
+                        cred_path = abs_path
+                
+                if os.path.exists(cred_path):
+                    # Local Development: Read explicitly from JSON key file
+                    # This avoids IAM signBlob permission issues as signing happens locally
+                    cred = credentials.Certificate(cred_path)
+                    print(f"Using service account key file: {cred_path}")
+                else:
+                    print(f"Key file not found at: {cred_path}. Falling back to ADC.")
+                    cred = credentials.ApplicationDefault()
             else:
                 # Cloud Run / GCP or Fallback: Use Application Default Credentials
                 cred = credentials.ApplicationDefault()

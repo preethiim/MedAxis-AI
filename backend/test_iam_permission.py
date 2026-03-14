@@ -11,10 +11,10 @@ def test_sign_blob():
         # Attempt to create a custom token for a dummy UID
         # This triggers the signBlob internally
         token = auth.create_custom_token("test-id")
-        print("✅ SUCCESS: Custom token generated successfully. IAM permission is active.")
+        print("SUCCESS: Custom token generated successfully. IAM permission is active.")
         return True
     except Exception as e:
-        print(f"❌ FAILED: Still getting permission error.")
+        print(f"FAILED: Still getting permission error.")
         print(f"Error detail: {e}")
         return False
 
