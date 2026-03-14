@@ -5,7 +5,7 @@ import requests
 import os
 import uuid
 from datetime import datetime, timedelta
-from .auth_helpers import PhoneOTPGenerateRequest, PhoneOTPVerifyRequest
+from .auth_helpers import PhoneOTPGenerateRequest, PhoneOTPVerifyRequest, normalize_phone
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -21,17 +21,10 @@ def generate_phone_otp(req: PhoneOTPGenerateRequest):
         db = firestore.client()
         
         # 1. Search for user by phone number
-        # Note: We should handle both '+91' and raw '10-digit' matches if possible
-        # For now, we expect exact match as stored in DB.
-        users_ref = db.collection("users").where("phoneNumber", "==", req.phoneNumber).limit(1).stream()
-        user_docs = list(users_ref)
+        normalized_phone = normalize_phone(req.phoneNumber)
         
-        if not user_docs:
-            # Also try without the +91 if the request has it
-            if req.phoneNumber.startswith("+91"):
-                clean_phone = req.phoneNumber.replace("+91", "").strip()
-                users_ref = db.collection("users").where("phoneNumber", "==", clean_phone).limit(1).stream()
-                user_docs = list(users_ref)
+        users_ref = db.collection("users").where("phoneNumber", "==", normalized_phone).limit(1).stream()
+        user_docs = list(users_ref)
         
         if not user_docs:
             raise HTTPException(status_code=404, detail="User with this phone number not found.")
@@ -53,7 +46,8 @@ def generate_phone_otp(req: PhoneOTPGenerateRequest):
         
         # 4. Send via Fast2SMS
         api_key = os.getenv("FAST2SMS_API_KEY")
-        clean_phone_for_sms = req.phoneNumber.replace("+91", "").strip()
+        # Use normalized phone for Fast2SMS (10 digits)
+        clean_phone_for_sms = normalized_phone
         
         if api_key and len(clean_phone_for_sms) >= 10:
             try:
@@ -94,13 +88,9 @@ def verify_phone_otp(req: PhoneOTPVerifyRequest):
         db = firestore.client()
         
         # 1. Find UID
-        users_ref = db.collection("users").where("phoneNumber", "==", req.phoneNumber).limit(1).stream()
+        normalized_phone = normalize_phone(req.phoneNumber)
+        users_ref = db.collection("users").where("phoneNumber", "==", normalized_phone).limit(1).stream()
         user_docs = list(users_ref)
-        
-        if not user_docs and req.phoneNumber.startswith("+91"):
-            clean_phone = req.phoneNumber.replace("+91", "").strip()
-            users_ref = db.collection("users").where("phoneNumber", "==", clean_phone).limit(1).stream()
-            user_docs = list(users_ref)
             
         if not user_docs:
             raise HTTPException(status_code=404, detail="User not found.")

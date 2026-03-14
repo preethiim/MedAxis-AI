@@ -69,6 +69,32 @@ const Login = () => {
         }
     }, [authStep, modelsLoaded]);
 
+    // NEW: Session Resumption for Patient 3nd/3rd Layer if already authenticated via Step 1
+    useEffect(() => {
+        const resumeSession = async () => {
+            if (!loading && currentUser && userRole === 'patient' && authStep === 0) {
+                console.log("DEBUG: Resuming patient session for 3-Layer Security...");
+                setSelectedRole('patient');
+                setPatientUid(currentUser.uid);
+                
+                try {
+                    const userDocRef = doc(db, 'users', currentUser.uid);
+                    const userDocSnap = await getDoc(userDocRef);
+                    if (userDocSnap.exists() && userDocSnap.data().faceData) {
+                        setStoredFaceDescriptor(userDocSnap.data().faceData);
+                    }
+                    
+                    const token = await currentUser.getIdToken();
+                    await generateBackendOTP(currentUser.uid, token);
+                    setAuthStep(2);
+                } catch (err) {
+                    console.error("Failed to resume session:", err);
+                }
+            }
+        };
+        resumeSession();
+    }, [currentUser, userRole, loading, authStep]);
+
     const setupRecaptcha = () => {
         if (!window.recaptchaVerifier) {
             window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
@@ -202,7 +228,8 @@ const Login = () => {
                     // Success!
                     setAuthStep(4);
                 } else {
-                    throw new Error(`Face match failed (Distance: ${distance.toFixed(2)}). You do not match the registered profile image.`);
+                    console.warn(`Face Match Failed: Distance ${distance.toFixed(3)} > Threshold ${THRESHOLD}`);
+                    throw new Error(`Face match failed (Similarity: ${((1 - distance) * 100).toFixed(0)}%). Please ensure you are the registered user and have good lighting.`);
                 }
             } else {
                 // First login: Store face descriptor in Firestore

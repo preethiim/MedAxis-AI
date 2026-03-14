@@ -33,6 +33,7 @@ from routers.auth_helpers import (
     PrescriptionRequest,
     OTPGenerateRequest,
     OTPVerifyRequest,
+    normalize_phone,
     REWARD_TIERS,
 )
 
@@ -246,6 +247,67 @@ async def upload_blood_report(uid: str = Form(...), file: UploadFile = File(...)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process Blood Report PDF: {str(e)}")
+
+
+@router.post("/upload/prescription")
+async def upload_prescription(uid: str = Form(...), file: UploadFile = File(...)):
+    """
+    1. Accepts a Prescription (PDF, Image, or TXT) and User UID.
+    2. Uploads raw file to Storage.
+    3. Extracts text and analyzes with AI.
+    4. Stores result in fhir_prescriptions/{uid}/prescriptions/{id} (Aligned with fetch logic).
+    """
+    try:
+        from ai_engine import analyze_prescription
+        file_bytes = await file.read()
+        
+        # 1. Upload to Storage
+        bucket = storage.bucket()
+        safe_filename = file.filename.replace(" ", "_")
+        unique_id = str(uuid.uuid4())[:8]
+        storage_path = f"prescriptions/{uid}/{unique_id}_{safe_filename}"
+        
+        blob = bucket.blob(storage_path)
+        blob.upload_from_string(file_bytes, content_type=file.content_type)
+        blob.make_public()
+        file_url = blob.public_url
+        
+        # 2. Extract and Analyze
+        raw_text = extract_text_from_file(file_bytes, file.filename)
+        ai_summary = analyze_prescription(raw_text)
+        
+        # 3. Save to Firestore (Aligned Path)
+        db = firestore.client()
+        report_id = str(uuid.uuid4())
+        
+        prescription_data = {
+            "id": report_id,
+            "patient_uid": uid,
+            "filename": file.filename,
+            "file_url": file_url,
+            "created_at": firestore.SERVER_TIMESTAMP, # Aligned with fetch sorting
+            "ai_analysis": ai_summary,
+            "raw_text_preview": raw_text[:500]
+        }
+        
+        # Consistent path used by get_patient_prescriptions
+        doc_ref = (
+            db.collection("fhir_prescriptions")
+            .document(uid)
+            .collection("prescriptions")
+            .document(report_id)
+        )
+        doc_ref.set(prescription_data)
+        
+        return {
+            "message": "Prescription uploaded and analyzed successfully.",
+            "file_url": file_url,
+            "ai_analysis": ai_summary,
+            "report_id": report_id
+        }
+    except Exception as e:
+        print(f"Error processing prescription: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process Prescription: {str(e)}")
 
 
 # ─── Patient Data Endpoints ────────────────────────────────────────────────────
@@ -673,9 +735,7 @@ def generate_patient_otp(req: OTPGenerateRequest):
             user_data = user_doc.to_dict()
             phone_number = user_data.get("phoneNumber")
             if phone_number:
-                # Remove '+' or country code for India if Fast2SMS requires just 10 digits
-                # Though Fast2SMS usually accepts standard 10 digit Indian numbers.
-                clean_phone = phone_number.replace("+91", "").strip()
+                clean_phone = normalize_phone(phone_number)
                 api_key = os.getenv("FAST2SMS_API_KEY")
                 if api_key and len(clean_phone) >= 10:
                     try:

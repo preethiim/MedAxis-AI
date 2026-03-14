@@ -26,6 +26,16 @@ def _random_alphanum(n: int) -> str:
     """Return n random uppercase letters + digits."""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=n))
 
+def normalize_phone(phone: str) -> str:
+    """
+    Standardizes phone numbers to the last 10 digits.
+    Useful for Fast2SMS and consistent Firestore lookups in India.
+    """
+    if not phone:
+        return ""
+    digits = "".join(filter(str.isdigit, phone))
+    return digits[-10:] if len(digits) >= 10 else digits
+
 def generate_unique_id(db, field: str, prefix: str, length: int, digits_only: bool = False) -> str:
     """
     Generate a prefixed ID that is guaranteed unique within the users collection.
@@ -155,6 +165,7 @@ class RegisterRequest(BaseModel):
     healthId: str = ""
     employeeId: str = ""
     phoneNumber: str = ""
+    profileImage: str = ""
     height: str = ""
     weight: str = ""
     bmi: str = ""

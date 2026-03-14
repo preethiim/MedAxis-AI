@@ -50,6 +50,14 @@ const Register = () => {
     const handleRegister = async (e) => {
         e.preventDefault();
         setError('');
+        
+        // Basic phone validation
+        const cleanPhone = formData.phoneNumber.replace(/\D/g, '');
+        if (cleanPhone.length < 10) {
+            setError("Please enter a valid 10-digit phone number.");
+            return;
+        }
+        
         setIsSubmitting(true);
 
         try {

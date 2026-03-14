@@ -49,7 +49,7 @@ def health_check():
 from pydantic import BaseModel
 from firebase_admin import firestore
 from fastapi import Depends, UploadFile, File
-from routers.auth_helpers import RegisterRequest, generate_unique_id, build_standard_user_doc, get_any_authenticated_uid
+from routers.auth_helpers import RegisterRequest, generate_unique_id, build_standard_user_doc, get_any_authenticated_uid, normalize_phone
 
 
 @app.post("/auth/register")
@@ -88,13 +88,17 @@ def register_user(req: RegisterRequest):
         db = firestore.client()
         health_id = generate_unique_id(db, "healthId", "PAT-", 6)
         
+        # Normalize phone number before saving
+        normalized_phone = normalize_phone(req.phoneNumber)
+        
         user_data = build_standard_user_doc(
             uid=user_record.uid,
             role="patient",
             email=req.email,
             name=req.name,
             healthId=health_id,
-            phoneNumber=req.phoneNumber,
+            phoneNumber=normalized_phone,
+            profileImage=req.profileImage,
             height=req.height,
             weight=req.weight,
             bmi=req.bmi
