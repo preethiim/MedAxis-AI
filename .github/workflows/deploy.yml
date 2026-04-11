@@ -29,12 +29,22 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
+          cat > /tmp/env.yaml <<EOF
+          FIREBASE_CREDENTIALS_JSON: '${{ secrets.FIREBASE_CREDENTIALS_JSON }}'
+          OPENAI_API_KEY: '${{ secrets.OPENAI_API_KEY }}'
+          FAST2SMS_API_KEY: '${{ secrets.FAST2SMS_API_KEY }}'
+          TWILIO_ACCOUNT_SID: '${{ secrets.TWILIO_ACCOUNT_SID }}'
+          TWILIO_AUTH_TOKEN: '${{ secrets.TWILIO_AUTH_TOKEN }}'
+          TWILIO_PHONE_NUMBER: '${{ secrets.TWILIO_PHONE_NUMBER }}'
+          EMAIL_SENDER: '${{ secrets.EMAIL_SENDER }}'
+          EMAIL_APP_PASSWORD: '${{ secrets.EMAIL_APP_PASSWORD }}'
+          EOF
           gcloud run deploy medaxis-backend \
             --source ./backend \
             --region us-central1 \
             --platform managed \
             --allow-unauthenticated \
-            --set-env-vars OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},FAST2SMS_API_KEY=${{ secrets.FAST2SMS_API_KEY }},TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }},TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }},TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }},EMAIL_SENDER=${{ secrets.EMAIL_SENDER }},EMAIL_APP_PASSWORD=${{ secrets.EMAIL_APP_PASSWORD }} \
+            --env-vars-file /tmp/env.yaml \
             --quiet
 
   deploy-frontend:
